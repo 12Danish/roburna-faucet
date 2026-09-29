@@ -2,7 +2,7 @@
 
 ## Goal and source of truth
 
-Build a native-currency faucet in one repository, first against a custom EVM test chain and then deployable per chain without changing Solidity logic. The supplied `native_faucet_contract_spec.docx` is the original contract baseline; `faucet_flow.png` defines the user journey. The project owner has changed the contract boundary: enforce a rolling 24-hour per-recipient cooldown on-chain and omit the global spending budget and period accounting. Eligibility and claim history remain off-chain. The backend authorizes claims; the contract enforces distributor permissions, recipient cooldown, maximum payout per transaction, and available balance.
+Build a native-currency faucet in one repository, first against a custom EVM test chain and then deployable per chain without changing Solidity logic. The supplied `native_faucet_contract_spec.docx` is the original contract baseline; `faucet_flow.png` defines the user journey. The contract enforces distributor permissions, maximum payout per transaction, available balance, and a global spending limit per fixed period. The backend enforces the rolling 24-hour per-wallet cooldown, eligibility, and durable claim history.
 
 The faucet pays **native currency**, not an ERC-20 token. The distributor submits and pays gas for `dispense(recipient, amount)`; the recipient only signs a challenge and receives funds.
 
@@ -20,9 +20,9 @@ Commit the contract ABI and per-chain deployment metadata in a predictable gener
 
 ## Decisions to settle in step 1
 
-1. Enforce the rolling 24-hour per-recipient cooldown in the contract. Omit contract-wide spending budgets and period rollover; the treasury controls total exposure through the amount it funds.
-2. Define one payout amount per chain in backend config; read the 24-hour cooldown from the contract and set on-chain `maxPayout` at or above that amount. Native units are stored as integer wei; display decimals only in the UI.
-3. Define confirmation depth for each chain and whether a pending claim blocks another claim. Recommend blocking until success or a reconciled failure. The contract starts the recipient cooldown when a payout succeeds on-chain; backend confirmation is a separate status.
+1. Enforce the rolling 24-hour per-wallet cooldown in the backend using PostgreSQL claim history. Enforce `spendingLimit` for a fixed period on-chain; choose the period duration and budget for each chain at deployment.
+2. Define one payout amount and 24-hour cooldown per chain in backend config; set on-chain `maxPayout` at or above that amount. Native units are stored as integer wei; display decimals only in the UI.
+3. Define confirmation depth for each chain and whether a pending claim blocks another claim. Recommend blocking until success or a reconciled failure. The backend starts the wallet cooldown from a confirmed payout and keeps pending claims reserved until their chain outcome is reconciled.
 4. Decide whether a chain can be enabled without CAPTCHA in a private development environment. Public endpoints need CAPTCHA and IP rate limits before real testnet launch.
 5. Confirm RPC capabilities on the custom chain: `eth_chainId`, transaction submission, receipts, gas estimation, and either EIP-1559 fees or legacy gas price. Do not assume every EVM chain implements the same fee model or finality time.
 
@@ -36,11 +36,11 @@ Create the three subprojects, root README, documented configuration keys, and lo
 
 Follow the finer checkpoints in [`step2_contract_plan.md`](step2_contract_plan.md).
 
-Use Foundry and a pinned OpenZeppelin Contracts release for access control, pause, and reentrancy protection. Implement non-upgradeable `NativeFaucet.sol` with admin and distributor roles; `dispense(address,uint256)`; `setMaxPayout`; `pause/unpause`; `withdraw`; and `receive`. Reject a zero recipient and zero or over-limit payout. Check the recipient cooldown and contract balance. Update recipient eligibility before the native transfer, revert if it fails, and emit funding, payout, configuration, and withdrawal events. Decide explicitly whether administrative withdrawals remain possible while paused; recommend yes for emergency migration.
+Use Foundry and a pinned OpenZeppelin Contracts release for delayed admin handoff, access control, pause, and reentrancy protection. Implement non-upgradeable `NativeFaucet.sol` with admin and distributor roles; `dispense(address,uint256)`; `setMaxPayout`; `setSpendingLimit`; `pause/unpause`; `withdraw`; and `receive`. Reject a zero recipient, a recipient with deployed code, and zero or over-limit payout. Check the current period spending allowance and contract balance. Update period accounting before the native transfer, revert if it fails, and emit funding, payout, configuration, and withdrawal events. Decide explicitly whether administrative withdrawals remain possible while paused; recommend yes for emergency migration.
 
 Deploy with separate admin and distributor addresses. A treasury wallet funds the contract after deployment. Export ABI and deployment metadata for the backend.
 
-**Tests:** authorized payout and exact balance change; unauthorized calls; invalid recipient/amount; per-payout cap; recipient cooldown before and at expiry; insufficient balance; paused behavior; recipient contract that reverts or attempts reentry; admin updates; withdraw; funding events. Add invariant/fuzz checks that a recipient cannot be paid twice within 24 hours and failed transfers do not start cooldown.
+**Tests:** authorized payout and exact balance change; unauthorized calls; invalid recipient/amount and deployed contract recipient; per-payout cap; global cap and exact period rollover; insufficient balance; paused behavior; admin transfer delay and updates; withdraw including failed transfer and attempted reentrancy; funding events. Check that payouts cannot exceed the global period limit and failed transfers do not change period accounting. Backend tests cover the wallet cooldown.
 
 **Gate:** `forge test` passes and a local Anvil deployment can be funded and dispensed from with distinct keys.
 
@@ -56,7 +56,7 @@ GET  /claims/{id}            status and transaction hash when available
 GET  /health                 service and dependency health
 ```
 
-Verify the signature server-side, consume each challenge once, check requested chain, CAPTCHA, IP limit, the contract's recipient next-eligible timestamp, and any eligibility rules. Set payout amount on the server; never accept an amount from the browser. Use a PostgreSQL transaction and a unique pending-claim constraint per chain and wallet so retries or multiple API workers cannot double submit. Reserve a claim in PostgreSQL before broadcast. Submit `dispense` using the distributor key and chain-specific fee mode; persist the transaction hash and nonce. Reconcile receipts in a background worker or startup-safe polling job, handling replacement, revert, timeout, and restart without duplicating a payout. Return `pending` first; mark `confirmed` after the configured confirmation depth. Release or retry failed reservations only after checking chain state.
+Recover the signer server-side and require it to match the recipient wallet; check that the address has no deployed code on the selected chain, consume each challenge once, check requested chain, CAPTCHA, IP limit, the PostgreSQL claim history for the wallet's 24-hour cooldown, and any eligibility rules. Set payout amount on the server; never accept an amount from the browser. Use a PostgreSQL transaction with a per-chain, per-wallet lock and a unique pending-claim constraint so retries or multiple API workers cannot double submit. Read confirmed payout time from durable claim history under the same lock. Reserve a claim in PostgreSQL before broadcast. Submit `dispense` using the distributor key and chain-specific fee mode; persist the transaction hash and nonce. Reconcile receipts in a background worker or startup-safe polling job, handling replacement, revert, timeout, and restart without duplicating a payout. Return `pending` first; mark `confirmed` after the configured confirmation depth. Release or retry failed reservations only after checking chain state.
 
 **Tests:** invalid/expired/replayed signatures; wrong chain; CAPTCHA failure; rate/cooldown denial; concurrent claims for one wallet; RPC timeout after broadcast; transaction revert; worker restart; receipt confirmation; chain ID mismatch. Use FastAPI `TestClient` for API tests and a local EVM for transaction tests.
 
@@ -76,7 +76,7 @@ Create one responsive page with Tailwind: chain selector, connect wallet, visibl
 
 1. Confirm the custom chain's chain ID, fee model, native decimals, RPC methods, block timing, and explorer URL.
 2. Deploy from `contracts/` with explicit chain ID and separate admin/distributor/treasury wallets. Record address, ABI version, deployment transaction, and configuration.
-3. Set the maximum payout, fund the faucet from treasury, fund the distributor with gas, and keep the API disabled until startup checks pass.
+3. Set the maximum payout and spending limit, fund the faucet from treasury, fund the distributor with gas, and keep the API disabled until startup checks pass.
 4. Run contract smoke checks directly: funded balance, role assignments, pause/unpause, and one manual `dispense` to a test recipient.
 5. Start PostgreSQL, backend, and frontend. Run one full signed claim; verify API status, receipt, event, recipient balance, and database record.
 6. Exercise duplicate submission, two simultaneous requests, cooldown, maximum-payout rejection, empty faucet, RPC outage, reverted transaction, restart during pending state, and pause. Record expected recovery behavior for each.
