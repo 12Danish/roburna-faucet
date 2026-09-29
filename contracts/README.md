@@ -39,7 +39,7 @@ The implementation will expose `maxPayout()`, `COOLDOWN()`, `nextEligibleAt(addr
 
 ## Phase 2.2: toolchain baseline
 
-Foundry uses Solidity 0.8.24 with the Paris EVM target and optimizer (200 runs), as configured in `foundry.toml`. Paris is a conservative bytecode target for local development; confirm the custom chain's supported EVM revision before deploying there. The project pins OpenZeppelin Contracts v5.7.0 and `forge-std` v1.16.2 through `foundry.lock` and Git submodules. The minimal contract currently imports `AccessControl`, `Pausable`, and `ReentrancyGuard`; roles and payout behavior will be implemented in later phases.
+Foundry uses Solidity 0.8.24 with the Paris EVM target and optimizer (200 runs), as configured in `foundry.toml`. Paris is a conservative bytecode target for local development; confirm the custom chain's supported EVM revision before deploying there. The project pins OpenZeppelin Contracts v5.7.0 and `forge-std` v1.16.2 through `foundry.lock` and Git submodules. The contract imports `AccessControl`, `Pausable`, and `ReentrancyGuard`. Phase 2.3 adds roles and funding; payout behavior comes later.
 
 From `contracts/`, run:
 
@@ -49,3 +49,9 @@ forge test
 ```
 
 Both commands pass at the end of Phase 2.2. No environment file or signing key is needed for this local baseline.
+
+## Phase 2.3: roles, state, and funding
+
+The constructor checks distinct, nonzero admin and distributor addresses and a nonzero initial maximum payout. It grants `DEFAULT_ADMIN_ROLE` to the admin and `DISTRIBUTOR_ROLE` to the distributor. `COOLDOWN` is 24 hours, and `nextEligibleAt(recipient)` is zero until a payout is implemented in Phase 2.4. Anyone can fund the contract through `receive()`, which emits `Funded(sender, amount)`.
+
+The tests in `test/NativeFaucetRolesAndFunding.t.sol` cover constructor rejection, initial state, role management permissions, and funding.
