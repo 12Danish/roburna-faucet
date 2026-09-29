@@ -1,0 +1,11 @@
+# Foundry generated output
+out/
+cache/
+broadcast/
+
+# Local secrets and editor files
+.env
+.env.*
+.idea/
+.vscode/
+.DS_Store
