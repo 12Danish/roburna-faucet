@@ -54,6 +54,7 @@ Edit `contracts/.env` with that chain's public deployment settings:
 | `FAUCET_ADMIN` | Admin account, preferably a multisignature wallet. |
 | `FAUCET_DISTRIBUTOR` | Backend signer that will submit payouts. |
 | `FAUCET_MAX_PAYOUT_WEI` | Maximum amount per payout in the chain's smallest native unit. |
+| `FAUCET_RECIPIENT_BALANCE_LIMIT_WEI` | Maximum native balance a recipient may have after a payout; `500000000000000000000` is 500 units on an 18-decimal chain. |
 | `FAUCET_SPENDING_LIMIT_WEI` | Total `dispense` allowance per period in the same unit. |
 | `FAUCET_PERIOD_SECONDS` | Immutable fixed-period duration; `86400` is one UTC day. |
 | `FAUCET_SIGNER_MODE` | `keystore` for a remote test chain. |
@@ -70,7 +71,7 @@ python3 scripts/deploy.py --broadcast
 
 The first command simulates deployment and must pass before the second command broadcasts. The launcher rejects a chain ID mismatch. For a custom chain, confirm the RPC supports transaction submission, gas estimation, and receipts; check its EVM revision and fee mode before deployment. Use the correct gas mode in `.env`. Do not use unlocked signing on a public RPC.
 
-After broadcasting, copy the faucet address, check that code exists there, read both roles and configuration getters, fund the contract with the treasury signer, and submit one small `dispense` from the distributor signer. Verify the transaction receipts, `Dispensed` event, recipient balance, faucet balance, and `spentInCurrentPeriod`. Do this before enabling the chain in the backend.
+After broadcasting, copy the faucet address, check that code exists there, read both roles and configuration getters, including `recipientBalanceLimit()`, fund the contract with the treasury signer, and submit one small `dispense` from the distributor signer. Verify the transaction receipts, `Dispensed` event, recipient balance, faucet balance, and `spentInCurrentPeriod`. Do this before enabling the chain in the backend.
 
 ## 3. Export public metadata
 

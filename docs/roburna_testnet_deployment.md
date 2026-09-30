@@ -8,6 +8,8 @@ The deployer is `0x7c2Eb5047858AD800414Dc8Ac60417A5d73be409`. It pays deployment
 
 [`contracts/.env.roburna.example`](../contracts/.env.roburna.example) sets a **10 RBAT maximum per payout** and a **1,000 RBAT on-chain spending cap per UTC day** (`86400` seconds). [`backend/config/chains.roburna.example.json`](../backend/config/chains.roburna.example.json) pays exactly **10 RBAT per successful claim** and allows **one confirmed claim per wallet every 24 hours**. Thus the configured backend allows up to 100 full claims per UTC day while the contract has funds. The 24-hour wallet cooldown is enforced by the backend database, not by the contract; an authorized distributor key can call the contract directly within its on-chain limits. The contract's period duration cannot be changed later. RBAT has 18 decimals: `10000000000000000000` wei = 10 RBAT; `1000000000000000000000` wei = 1,000 RBAT.
 
+For a new deployment with the recipient-balance rule, set `FAUCET_RECIPIENT_BALANCE_LIMIT_WEI=500000000000000000000` in `contracts/.env.roburna`. This caps each wallet at 500 RBAT *after* a faucet payout. The existing deployed faucet at `0xDB2c44c507Ec4C610F0a8035DEDBa00585176d55` cannot be upgraded; activating this rule requires a new deployment, updated deployment metadata and backend address, and moving funds after pausing the old contract.
+
 Use separate keys for deployer, admin, and distributor. Fund the deployer with enough RBAT for deployment gas and the distributor with enough RBAT for payout gas. The contract itself needs RBAT for the actual payouts.
 
 ## 2. Deploy the contract

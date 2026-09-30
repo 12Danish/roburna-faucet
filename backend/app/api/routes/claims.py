@@ -161,9 +161,10 @@ def submit_claim(
         raise HTTPException(status_code=503, detail={"code": "chain_unavailable"}) from None
 
     try:
-        require_faucet_capacity(chain)
+        require_faucet_capacity(chain, request.wallet_address)
     except FaucetUnavailable as exc:
-        raise HTTPException(status_code=503, detail={"code": exc.code}) from None
+        code = 422 if exc.code == "recipient_balance_limit_exceeded" else 503
+        raise HTTPException(status_code=code, detail={"code": exc.code}) from None
 
     _rate_limit(
         runtime,

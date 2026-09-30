@@ -16,12 +16,14 @@ contract NativeFaucetRolesAndFundingTest is Test {
     uint256 internal constant INITIAL_MAX_PAYOUT = 5 ether;
     uint256 internal constant INITIAL_SPENDING_LIMIT = 10 ether;
     uint256 internal constant PERIOD_DURATION = 1 days;
+    uint256 internal constant RECIPIENT_BALANCE_LIMIT = 500 ether;
 
     event Funded(address indexed sender, uint256 amount);
 
     function testDeploymentStateAndRoles() public {
-        NativeFaucet faucet =
-            new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        NativeFaucet faucet = new NativeFaucet(
+            ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
 
         assertTrue(faucet.hasRole(faucet.DEFAULT_ADMIN_ROLE(), ADMIN));
         assertEq(faucet.defaultAdmin(), ADMIN);
@@ -32,6 +34,7 @@ contract NativeFaucetRolesAndFundingTest is Test {
         assertEq(faucet.maxPayout(), INITIAL_MAX_PAYOUT);
         assertEq(faucet.spendingLimit(), INITIAL_SPENDING_LIMIT);
         assertEq(faucet.periodDuration(), PERIOD_DURATION);
+        assertEq(faucet.recipientBalanceLimit(), RECIPIENT_BALANCE_LIMIT);
         assertEq(faucet.periodStart(), faucet.currentPeriodStart());
         assertEq(faucet.periodSpent(), 0);
         assertFalse(faucet.paused());
@@ -43,27 +46,42 @@ contract NativeFaucetRolesAndFundingTest is Test {
                 IAccessControlDefaultAdminRules.AccessControlInvalidDefaultAdmin.selector, address(0)
             )
         );
-        new NativeFaucet(address(0), DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        new NativeFaucet(
+            address(0),
+            DISTRIBUTOR,
+            INITIAL_MAX_PAYOUT,
+            INITIAL_SPENDING_LIMIT,
+            PERIOD_DURATION,
+            RECIPIENT_BALANCE_LIMIT
+        );
 
         vm.expectRevert(NativeFaucet.InvalidDistributor.selector);
-        new NativeFaucet(ADMIN, address(0), INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        new NativeFaucet(
+            ADMIN, address(0), INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
 
         vm.expectRevert(NativeFaucet.SameAdminAndDistributor.selector);
-        new NativeFaucet(ADMIN, ADMIN, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        new NativeFaucet(
+            ADMIN, ADMIN, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
 
         vm.expectRevert(NativeFaucet.InvalidMaxPayout.selector);
-        new NativeFaucet(ADMIN, DISTRIBUTOR, 0, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        new NativeFaucet(ADMIN, DISTRIBUTOR, 0, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT);
 
         vm.expectRevert(NativeFaucet.InvalidSpendingLimit.selector);
-        new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, 0, PERIOD_DURATION);
+        new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, 0, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT);
 
         vm.expectRevert(NativeFaucet.InvalidPeriodDuration.selector);
-        new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, 0);
+        new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, 0, RECIPIENT_BALANCE_LIMIT);
+
+        vm.expectRevert(NativeFaucet.InvalidRecipientBalanceLimit.selector);
+        new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, 0);
     }
 
     function testOnlyAdminCanManageDistributorRole() public {
-        NativeFaucet faucet =
-            new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        NativeFaucet faucet = new NativeFaucet(
+            ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
         bytes32 distributorRole = faucet.DISTRIBUTOR_ROLE();
         bytes32 adminRole = faucet.DEFAULT_ADMIN_ROLE();
 
@@ -88,8 +106,9 @@ contract NativeFaucetRolesAndFundingTest is Test {
     }
 
     function testDefaultAdminTransferNeedsNewAdminAcceptanceAfterDelay() public {
-        NativeFaucet faucet =
-            new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        NativeFaucet faucet = new NativeFaucet(
+            ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
         bytes32 adminRole = faucet.DEFAULT_ADMIN_ROLE();
 
         vm.prank(ADMIN);
@@ -117,8 +136,9 @@ contract NativeFaucetRolesAndFundingTest is Test {
     }
 
     function testReceivesNativeFundingAndEmitsEvent() public {
-        NativeFaucet faucet =
-            new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION);
+        NativeFaucet faucet = new NativeFaucet(
+            ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT
+        );
         uint256 fundingAmount = 20 ether;
         vm.deal(TREASURY, fundingAmount);
 

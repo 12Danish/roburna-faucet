@@ -33,6 +33,8 @@ PostgreSQL stores `challenges`, `claims`, `transaction_attempts`, and short-live
 
 A claim request contains `challenge_id`, `chain_id`, `wallet_address`, the exact SIWE `message`, and its `signature`. The API checks current contract pause, payout cap, remaining period allowance, and balance before reservation. These reads can become stale; the worker checks again, and the contract is the final payout gate. The database transaction consumes the challenge and inserts one `reserved` claim under a per-chain/per-wallet advisory lock. It blocks an active claim and starts the configured wallet cooldown only after a confirmed payout. Repeating an accepted signed request returns the same claim ID.
 
+For deployments with `recipientBalanceLimit()`, the API also checks that the wallet's native balance plus the fixed payout does not exceed the admin-configured limit. It returns HTTP `422` with `recipient_balance_limit_exceeded` before reserving an ineligible claim. The contract rechecks at execution time; older deployments without this getter continue to use their existing rules.
+
 The worker processes reserved claims separately from FastAPI. It persists each signed transaction and nonce **before** broadcast, reconciles uncertain sends by transaction hash, and waits for the configured confirmation depth. A stuck transaction may be replaced with a higher fee at the **same nonce**, preserving recipient and amount. A pending or uncertain claim stays blocked until its chain outcome is known.
 
 ## Security controls

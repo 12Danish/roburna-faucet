@@ -17,6 +17,7 @@ KEYS = {
     "FAUCET_ADMIN",
     "FAUCET_DISTRIBUTOR",
     "FAUCET_MAX_PAYOUT_WEI",
+    "FAUCET_RECIPIENT_BALANCE_LIMIT_WEI",
     "FAUCET_SPENDING_LIMIT_WEI",
     "FAUCET_PERIOD_SECONDS",
     "FAUCET_SIGNER_MODE",
@@ -66,7 +67,7 @@ def validate(config: dict[str, str]) -> None:
     rpc = urlparse(config["FAUCET_RPC_URL"])
     if rpc.scheme not in {"http", "https"} or not rpc.hostname:
         raise ValueError("FAUCET_RPC_URL must be an HTTP(S) URL")
-    for key in ("FAUCET_EXPECTED_CHAIN_ID", "FAUCET_MAX_PAYOUT_WEI", "FAUCET_SPENDING_LIMIT_WEI", "FAUCET_PERIOD_SECONDS"):
+    for key in ("FAUCET_EXPECTED_CHAIN_ID", "FAUCET_MAX_PAYOUT_WEI", "FAUCET_RECIPIENT_BALANCE_LIMIT_WEI", "FAUCET_SPENDING_LIMIT_WEI", "FAUCET_PERIOD_SECONDS"):
         positive_int(config, key)
     for key in ("FAUCET_ADMIN", "FAUCET_DISTRIBUTOR"):
         if not ADDRESS.fullmatch(config[key]) or int(config[key], 16) == 0:

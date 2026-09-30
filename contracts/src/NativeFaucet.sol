@@ -14,6 +14,7 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
 
     uint256 public immutable periodDuration;
     uint256 public maxPayout;
+    uint256 public recipientBalanceLimit;
     uint256 public spendingLimit;
     uint256 public periodStart;
     uint256 public periodSpent;
@@ -21,12 +22,14 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
     error InvalidDistributor();
     error SameAdminAndDistributor();
     error InvalidMaxPayout();
+    error InvalidRecipientBalanceLimit();
     error InvalidSpendingLimit();
     error InvalidPeriodDuration();
     error InvalidRecipient();
     error ContractRecipient(address recipient);
     error InvalidAmount();
     error PayoutExceedsMaximum(uint256 amount, uint256 maximum);
+    error RecipientBalanceLimitExceeded(uint256 balance, uint256 amount, uint256 limit);
     error SpendingLimitExceeded(uint256 requested, uint256 remaining);
     error InsufficientBalance(uint256 requested, uint256 available);
     error NativeTransferFailed(address recipient, uint256 amount);
@@ -34,6 +37,7 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
     event Funded(address indexed sender, uint256 amount);
     event Dispensed(address indexed distributor, address indexed recipient, uint256 amount);
     event MaxPayoutUpdated(uint256 previousAmount, uint256 newAmount);
+    event RecipientBalanceLimitUpdated(uint256 previousLimit, uint256 newLimit);
     event SpendingLimitUpdated(uint256 previousAmount, uint256 newAmount);
     event Withdrawn(address indexed recipient, uint256 amount);
 
@@ -42,15 +46,18 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
         address distributor,
         uint256 initialMaxPayout,
         uint256 initialSpendingLimit,
-        uint256 periodDurationSeconds
+        uint256 periodDurationSeconds,
+        uint256 initialRecipientBalanceLimit
     ) AccessControlDefaultAdminRules(ADMIN_TRANSFER_DELAY, admin) {
         if (distributor == address(0)) revert InvalidDistributor();
         if (admin == distributor) revert SameAdminAndDistributor();
         if (initialMaxPayout == 0) revert InvalidMaxPayout();
+        if (initialRecipientBalanceLimit == 0) revert InvalidRecipientBalanceLimit();
         if (initialSpendingLimit == 0) revert InvalidSpendingLimit();
         if (periodDurationSeconds == 0) revert InvalidPeriodDuration();
 
         maxPayout = initialMaxPayout;
+        recipientBalanceLimit = initialRecipientBalanceLimit;
         spendingLimit = initialSpendingLimit;
         periodDuration = periodDurationSeconds;
         periodStart = block.timestamp - (block.timestamp % periodDurationSeconds);
@@ -72,6 +79,10 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
         if (recipient.code.length != 0) revert ContractRecipient(recipient);
         if (amount == 0) revert InvalidAmount();
         if (amount > maxPayout) revert PayoutExceedsMaximum(amount, maxPayout);
+        uint256 recipientBalance = recipient.balance;
+        if (recipientBalance >= recipientBalanceLimit || amount > recipientBalanceLimit - recipientBalance) {
+            revert RecipientBalanceLimitExceeded(recipientBalance, amount, recipientBalanceLimit);
+        }
 
         uint256 currentStart = currentPeriodStart();
         uint256 spent = currentStart == periodStart ? periodSpent : 0;
@@ -105,6 +116,14 @@ contract NativeFaucet is AccessControlDefaultAdminRules, Pausable, ReentrancyGua
         uint256 previousAmount = maxPayout;
         maxPayout = amount;
         emit MaxPayoutUpdated(previousAmount, amount);
+    }
+
+    /// @notice Caps a recipient's native balance after each faucet payout.
+    function setRecipientBalanceLimit(uint256 limit) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (limit == 0) revert InvalidRecipientBalanceLimit();
+        uint256 previousLimit = recipientBalanceLimit;
+        recipientBalanceLimit = limit;
+        emit RecipientBalanceLimitUpdated(previousLimit, limit);
     }
 
     /// @notice Changes the total payout allowance for each fixed period.

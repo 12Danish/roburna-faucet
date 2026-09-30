@@ -33,10 +33,10 @@ def main() -> None:
     receipt = receipts[0]
     if receipt["contractAddress"].lower() != tx["contractAddress"].lower():
         raise ValueError("transaction and receipt contract addresses differ")
-    if len(tx["arguments"]) != 5:
+    if len(tx["arguments"]) != 6:
         raise ValueError("unexpected NativeFaucet constructor arguments")
 
-    admin, distributor, max_payout, spending_limit, period_seconds = tx["arguments"]
+    admin, distributor, max_payout, spending_limit, period_seconds, recipient_balance_limit = tx["arguments"]
     deployment = {
         "chainId": args.chain_id,
         "address": tx["contractAddress"],
@@ -48,6 +48,7 @@ def main() -> None:
             "maxPayoutWei": str(max_payout),
             "spendingLimitWei": str(spending_limit),
             "periodDurationSeconds": str(period_seconds),
+            "recipientBalanceLimitWei": str(recipient_balance_limit),
         },
         "abi": artifact["abi"],
     }

@@ -50,15 +50,19 @@ contract NativeFaucetAdminTest is Test {
     uint256 internal constant INITIAL_MAX_PAYOUT = 5 ether;
     uint256 internal constant INITIAL_BALANCE = 20 ether;
     uint256 internal constant INITIAL_SPENDING_LIMIT = 10 ether;
+    uint256 internal constant RECIPIENT_BALANCE_LIMIT = 500 ether;
 
     NativeFaucet internal faucet;
 
     event MaxPayoutUpdated(uint256 previousAmount, uint256 newAmount);
+    event RecipientBalanceLimitUpdated(uint256 previousLimit, uint256 newLimit);
     event SpendingLimitUpdated(uint256 previousAmount, uint256 newAmount);
     event Withdrawn(address indexed recipient, uint256 amount);
 
     function setUp() public {
-        faucet = new NativeFaucet(ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, 1 days);
+        faucet = new NativeFaucet(
+            ADMIN, DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, 1 days, RECIPIENT_BALANCE_LIMIT
+        );
         vm.deal(address(faucet), INITIAL_BALANCE);
         vm.warp(1_000_000);
     }
@@ -88,6 +92,32 @@ contract NativeFaucetAdminTest is Test {
         vm.prank(DISTRIBUTOR);
         faucet.dispense(RECIPIENT, 1 ether);
         assertEq(RECIPIENT.balance, 1 ether);
+    }
+
+    function testOnlyAdminCanChangeRecipientBalanceLimit() public {
+        bytes32 adminRole = faucet.DEFAULT_ADMIN_ROLE();
+        vm.prank(DISTRIBUTOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, DISTRIBUTOR, adminRole)
+        );
+        faucet.setRecipientBalanceLimit(2 ether);
+
+        vm.prank(ADMIN);
+        vm.expectRevert(NativeFaucet.InvalidRecipientBalanceLimit.selector);
+        faucet.setRecipientBalanceLimit(0);
+
+        vm.expectEmit(false, false, false, true, address(faucet));
+        emit RecipientBalanceLimitUpdated(RECIPIENT_BALANCE_LIMIT, 2 ether);
+        vm.prank(ADMIN);
+        faucet.setRecipientBalanceLimit(2 ether);
+        assertEq(faucet.recipientBalanceLimit(), 2 ether);
+
+        vm.deal(RECIPIENT, 1 ether);
+        vm.prank(DISTRIBUTOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(NativeFaucet.RecipientBalanceLimitExceeded.selector, 1 ether, 2 ether, 2 ether)
+        );
+        faucet.dispense(RECIPIENT, 2 ether);
     }
 
     function testOnlyAdminCanChangeSpendingLimit() public {
@@ -211,8 +241,14 @@ contract NativeFaucetAdminTest is Test {
 
     function testAdminWithdrawalCannotReenter() public {
         ReenteringAdminRecipient adminContract = new ReenteringAdminRecipient();
-        NativeFaucet guarded =
-            new NativeFaucet(address(adminContract), DISTRIBUTOR, INITIAL_MAX_PAYOUT, INITIAL_SPENDING_LIMIT, 1 days);
+        NativeFaucet guarded = new NativeFaucet(
+            address(adminContract),
+            DISTRIBUTOR,
+            INITIAL_MAX_PAYOUT,
+            INITIAL_SPENDING_LIMIT,
+            1 days,
+            RECIPIENT_BALANCE_LIMIT
+        );
         adminContract.setFaucet(guarded);
         vm.deal(address(guarded), INITIAL_BALANCE);
 

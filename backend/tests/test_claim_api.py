@@ -40,7 +40,7 @@ def _api(monkeypatch, *, existing_id=None):
     )
     monkeypatch.setattr(claim_routes, "get_settings", lambda: settings)
     monkeypatch.setattr(claim_routes, "existing_claim_for_signed_challenge", lambda *args, **kwargs: existing_id)
-    monkeypatch.setattr(claim_routes, "require_faucet_capacity", lambda chain: None)
+    monkeypatch.setattr(claim_routes, "require_faucet_capacity", lambda chain, recipient: None)
     monkeypatch.setattr(claim_routes, "verify_wallet_challenge", lambda *args, **kwargs: None)
     monkeypatch.setattr(claim_routes, "reserve_claim", lambda *args, **kwargs: ClaimReservation(claim_id, "reserved", datetime.now(timezone.utc)))
     monkeypatch.setattr(
@@ -157,7 +157,7 @@ def test_paused_faucet_does_not_reserve_claim(monkeypatch) -> None:
     monkeypatch.setattr(
         claim_routes,
         "require_faucet_capacity",
-        lambda chain: (_ for _ in ()).throw(FaucetUnavailable("faucet_paused")),
+        lambda chain, recipient: (_ for _ in ()).throw(FaucetUnavailable("faucet_paused")),
     )
     monkeypatch.setattr(
         claim_routes,
@@ -169,6 +169,26 @@ def test_paused_faucet_does_not_reserve_claim(monkeypatch) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "faucet_paused"
+
+
+def test_recipient_balance_cap_rejection_does_not_reserve_claim(monkeypatch) -> None:
+    client, body, _ = _api(monkeypatch)
+    monkeypatch.setattr(claim_routes, "enforce_request_rate_limit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        claim_routes,
+        "require_faucet_capacity",
+        lambda chain, recipient: (_ for _ in ()).throw(FaucetUnavailable("recipient_balance_limit_exceeded")),
+    )
+    monkeypatch.setattr(
+        claim_routes,
+        "reserve_claim",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not reserve")),
+    )
+
+    response = client.post("/claims", json=body)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "recipient_balance_limit_exceeded"
 
 
 def test_cooldown_returns_next_eligible_time(monkeypatch) -> None:

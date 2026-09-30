@@ -18,9 +18,10 @@ contract DeployNativeFaucet is Script {
         uint256 maxPayout = vm.envUint("FAUCET_MAX_PAYOUT_WEI");
         uint256 spendingLimit = vm.envUint("FAUCET_SPENDING_LIMIT_WEI");
         uint256 periodSeconds = vm.envUint("FAUCET_PERIOD_SECONDS");
+        uint256 recipientBalanceLimit = vm.envUint("FAUCET_RECIPIENT_BALANCE_LIMIT_WEI");
 
         vm.startBroadcast();
-        faucet = new NativeFaucet(admin, distributor, maxPayout, spendingLimit, periodSeconds);
+        faucet = new NativeFaucet(admin, distributor, maxPayout, spendingLimit, periodSeconds, recipientBalanceLimit);
         vm.stopBroadcast();
 
         console2.log("chainId", block.chainid);

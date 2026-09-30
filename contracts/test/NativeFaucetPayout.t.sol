@@ -18,12 +18,14 @@ contract NativeFaucetPayoutTest is Test {
     uint256 internal constant SPENDING_LIMIT = 10 ether;
     uint256 internal constant INITIAL_BALANCE = 20 ether;
     uint256 internal constant PERIOD_DURATION = 1 days;
+    uint256 internal constant RECIPIENT_BALANCE_LIMIT = 500 ether;
 
     NativeFaucet internal faucet;
     event Dispensed(address indexed distributor, address indexed recipient, uint256 amount);
 
     function setUp() public {
-        faucet = new NativeFaucet(ADMIN, DISTRIBUTOR, MAX_PAYOUT, SPENDING_LIMIT, PERIOD_DURATION);
+        faucet =
+            new NativeFaucet(ADMIN, DISTRIBUTOR, MAX_PAYOUT, SPENDING_LIMIT, PERIOD_DURATION, RECIPIENT_BALANCE_LIMIT);
         vm.deal(address(faucet), INITIAL_BALANCE);
         vm.warp(1_000_000);
     }
@@ -73,6 +75,39 @@ contract NativeFaucetPayoutTest is Test {
         vm.expectRevert(abi.encodeWithSelector(NativeFaucet.InsufficientBalance.selector, 1 ether, 0.5 ether));
         faucet.dispense(RECIPIENT, 1 ether);
         assertEq(faucet.spentInCurrentPeriod(), 0);
+    }
+
+    function testRecipientBalanceMayReachButNotExceedLimit() public {
+        vm.deal(RECIPIENT, RECIPIENT_BALANCE_LIMIT - 2 ether);
+        vm.prank(DISTRIBUTOR);
+        faucet.dispense(RECIPIENT, 2 ether);
+        assertEq(RECIPIENT.balance, RECIPIENT_BALANCE_LIMIT);
+
+        vm.prank(DISTRIBUTOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                NativeFaucet.RecipientBalanceLimitExceeded.selector, RECIPIENT_BALANCE_LIMIT, 1, RECIPIENT_BALANCE_LIMIT
+            )
+        );
+        faucet.dispense(RECIPIENT, 1);
+        assertEq(faucet.spentInCurrentPeriod(), 2 ether);
+    }
+
+    function testRejectsPayoutThatWouldCrossRecipientBalanceLimit() public {
+        vm.deal(RECIPIENT, RECIPIENT_BALANCE_LIMIT - 1 ether);
+        vm.prank(DISTRIBUTOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                NativeFaucet.RecipientBalanceLimitExceeded.selector,
+                RECIPIENT_BALANCE_LIMIT - 1 ether,
+                2 ether,
+                RECIPIENT_BALANCE_LIMIT
+            )
+        );
+        faucet.dispense(RECIPIENT, 2 ether);
+        assertEq(RECIPIENT.balance, RECIPIENT_BALANCE_LIMIT - 1 ether);
+        assertEq(faucet.spentInCurrentPeriod(), 0);
+        assertEq(address(faucet).balance, INITIAL_BALANCE);
     }
 
     function testContractAllowsRepeatRecipientAndCountsBothPayments() public {
