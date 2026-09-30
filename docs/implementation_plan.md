@@ -46,6 +46,8 @@ Deploy with separate admin and distributor addresses. A treasury wallet funds th
 
 ## Step 3 — Minimal FastAPI claim service
 
+Follow the finer checkpoints in [`step3_backend_plan.md`](step3_backend_plan.md).
+
 Use FastAPI with `web3.py` and PostgreSQL for durable challenges, claims, transactions, audit records, and initial rate limits. Start without Redis. Keep a small API:
 
 ```text
