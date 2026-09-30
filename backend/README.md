@@ -32,13 +32,19 @@ The connection URL in `.env` should then look like:
 postgresql://faucet_app:YOUR_PASSWORD@127.0.0.1:5432/roburna_faucet
 ```
 
-Use a URL-safe password for this local setup, or URL-encode special characters in the URL. Create the tables from the SQLAlchemy definitions with this command, run from `backend/`:
+Use a URL-safe password for this local setup, or URL-encode special characters in the URL. The table definitions live in `app/db/models.py`. From `backend/`, ask Alembic to generate a migration by comparing those models with the database:
 
 ```bash
-python -m app.db.create_schema
+alembic revision --autogenerate -m "create faucet tables"
 ```
 
-The table definitions live in `app/db/models.py`. `create_all` creates missing tables and indexes; it does not alter existing tables when a model changes. Since this is the local development stage, recreate the local database if you need to reset a changed schema. Before using persistent or public deployments, add managed schema migrations.
+Review the generated file in `migrations/versions/`, then apply it:
+
+```bash
+alembic upgrade head
+```
+
+Autogenerate uses the SQLAlchemy metadata as its source, but the migration file is still the versioned change that gets applied to the database. If this is an empty database, the generated revision should create all three tables and their constraints/indexes. If tables were already created with the old `create_schema.py` command, autogenerate may see no changes; recreate this disposable local database before generating the initial revision.
 
 Start PostgreSQL and Anvil. After deploying the faucet to Anvil, export deployment metadata from the `contracts/` directory:
 
@@ -60,6 +66,6 @@ Never put private keys or authenticated RPC URLs in `chains.json` or commit `.en
 
 ## Claim reservation behavior
 
-`app/db/claims.py` consumes a valid, already-verified challenge and reserves one claim in a short SQLAlchemy transaction. It takes a PostgreSQL transaction-level advisory lock for the chain and wallet, checks for an active claim and recent confirmation, consumes the challenge, then inserts a `reserved` claim. The partial unique index is the database backstop. RPC calls stay outside this transaction. An uncertain broadcast remains active; a known failure frees the wallet to try again; the cooldown starts at confirmation.
+`app/services/claims.py` consumes a valid, already-verified challenge and reserves one claim in a short SQLAlchemy transaction. It takes a PostgreSQL transaction-level advisory lock for the chain and wallet, checks for an active claim and recent confirmation, consumes the challenge, then inserts a `reserved` claim. The partial unique index is the database backstop. RPC calls stay outside this transaction. An uncertain broadcast remains active; a known failure frees the wallet to try again; the cooldown starts at confirmation.
 
-A concurrency integration test exercises simultaneous reservations and those claim states. Set `FAUCET_TEST_DATABASE_URL` to a dedicated disposable PostgreSQL database before running `pytest` from `backend/`. The test creates missing tables from the same ORM metadata and removes its rows afterward. Do not point it at a database containing application data.
+A concurrency integration test exercises simultaneous reservations and those claim states. Set `FAUCET_TEST_DATABASE_URL` to a dedicated disposable PostgreSQL database before running `pytest` from `backend/`. The test creates its tables from the ORM metadata and removes its rows afterward. Do not point it at a database containing application data.

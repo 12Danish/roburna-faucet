@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
-from app.db.claims import (
+from app.services.claims import (
     ClaimAlreadyPending,
     ClaimReservation,
     WalletCooldownActive,
