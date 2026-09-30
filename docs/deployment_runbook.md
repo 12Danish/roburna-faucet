@@ -60,7 +60,7 @@ Edit `contracts/.env` with that chain's public deployment settings:
 | `FAUCET_DEPLOYER_ACCOUNT` | Name of a Foundry keystore outside this repo. |
 | `FAUCET_LEGACY_GAS` | `true` only if the chain needs legacy gas transactions. |
 
-Remove the Anvil-only `FAUCET_DEPLOYER` line and set the signer mode/account for your test chain. The deployer needs native currency for gas. The distributor also needs gas for later payouts. Fund the faucet separately from your treasury after deployment.
+For a remote keystore signer, `FAUCET_DEPLOYER` is optional; if set, the launcher verifies that the keystore derives this address before running Forge. Set the signer mode/account for your test chain. The deployer needs native currency for gas. The distributor also needs gas for later payouts. Fund the faucet separately from your treasury after deployment.
 
 ```sh
 cd contracts

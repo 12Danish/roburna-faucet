@@ -1,0 +1,10 @@
+**/.env
+**/.env.*
+compose.env
+secrets/
+config/chains.json
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+tests/

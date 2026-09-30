@@ -1,0 +1,19 @@
+{
+  "chains": [
+    {
+      "chain_id": 159,
+      "name": "Roburna Testnet",
+      "rpc_url_key": "ROBURNA_TESTNET",
+      "deployment_file": "../../contracts/deployments/159.json",
+      "currency_symbol": "RBAT",
+      "currency_decimals": 18,
+      "payout_amount_wei": "100000000000000000",
+      "cooldown_seconds": 86400,
+      "confirmation_depth": 1,
+      "fee_mode": "legacy",
+      "explorer_url": null,
+      "enabled": true,
+      "distributor_address": "0x546501e0c1d35822CcA63ef2A4787Ff1c2367079"
+    }
+  ]
+}

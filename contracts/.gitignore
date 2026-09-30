@@ -8,6 +8,7 @@ broadcast/
 .env
 .env.*
 !.env.example
+!.env.roburna.example
 .idea/
 .vscode/
 .DS_Store

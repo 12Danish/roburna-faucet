@@ -109,6 +109,17 @@ def main() -> int:
         if chain != str(positive_int(config, "FAUCET_EXPECTED_CHAIN_ID")):
             raise ValueError(f"RPC chain ID {chain} differs from FAUCET_EXPECTED_CHAIN_ID")
 
+        if config["FAUCET_SIGNER_MODE"] == "keystore" and config.get("FAUCET_DEPLOYER"):
+            signer = subprocess.run(
+                ["cast", "wallet", "address", "--account", config["FAUCET_DEPLOYER_ACCOUNT"]],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            if signer.lower() != config["FAUCET_DEPLOYER"].lower():
+                raise ValueError(f"keystore signer {signer} differs from FAUCET_DEPLOYER")
+
         command = [
             "forge", "script", "script/DeployNativeFaucet.s.sol:DeployNativeFaucet",
             "--rpc-url", rpc_url,
@@ -127,7 +138,7 @@ def main() -> int:
         print(f"Validated chain ID {chain}; {'broadcasting' if args.broadcast else 'dry run'}", flush=True)
         return subprocess.run(command, cwd=ROOT, env=child_env, check=False).returncode
     except subprocess.CalledProcessError:
-        print("Deployment configuration error: could not read chain ID from RPC", file=sys.stderr)
+        print("Deployment configuration error: RPC or keystore check failed", file=sys.stderr)
         return 1
     except (ValueError, OSError) as exc:
         print(f"Deployment configuration error: {exc}", file=sys.stderr)

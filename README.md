@@ -2,7 +2,7 @@
 
 A monorepo for dispensing a small amount of an EVM chain's **native currency**. The wallet signs an off-chain challenge; the backend approves and records the claim; a separate distributor worker pays gas and calls the faucet contract. The recipient does not send a transaction. This is a native-currency faucet, not an ERC-20 token faucet.
 
-The Solidity contract and FastAPI claim flow are implemented. The Next.js frontend is currently a starter page. Local Anvil is the first test chain; each later EVM chain needs its own contract deployment, RPC settings, and backend chain entry. No Roburna testnet deployment is recorded in this repo.
+The Solidity contract and FastAPI claim flow are implemented. The Next.js frontend is currently a starter page. Local Anvil is the first test chain; each later EVM chain needs its own contract deployment, RPC settings, and backend chain entry. No Roburna testnet deployment is recorded in this repo. A [Roburna testnet deployment and Compose guide](docs/roburna_testnet_deployment.md) is available.
 
 ## Project layout
 

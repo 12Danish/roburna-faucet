@@ -105,6 +105,10 @@ Set `BACKEND_DISTRIBUTOR_KEYSTORE_PATH` and `BACKEND_DISTRIBUTOR_KEYSTORE_PASSWO
 python -m app.worker
 ```
 
+## Roburna testnet with Docker Compose
+
+Use the [Roburna testnet deployment and Compose guide](../docs/roburna_testnet_deployment.md). [`compose.yaml`](compose.yaml) starts PostgreSQL, runs Alembic migrations once, then starts the API and a separate worker. [`compose.env.example`](compose.env.example) and [`config/chains.roburna.example.json`](config/chains.roburna.example.json) are templates. The worker alone receives the encrypted distributor keystore and its password. Compose keeps PostgreSQL on its private network and binds the API to the host loopback interface; put an HTTPS reverse proxy in front before public access.
+
 ## Tests
 
 From `backend/`, run `python -m pytest`. Unit and API tests cover SIWE binding, invalid signatures, EOA checks, rate-limit response order, cooldown/error mapping, nonce choice, and fee replacement calculations. For PostgreSQL integration tests, set `FAUCET_TEST_DATABASE_URL` to a **dedicated test database** and run `python -m pytest` again. The claim-reservation test exercises concurrent claims, pending states, failure release, and cooldown. The rate-limit tests verify every configured minute/hour threshold, concurrent IP requests, and wallet limits across IP changes; they create and drop a temporary schema. PostgreSQL tests skip when the test URL is absent.

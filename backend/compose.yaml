@@ -1,0 +1,77 @@
+name: roburna-faucet
+
+x-app-environment: &app-environment
+  BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:?set BACKEND_DATABASE_URL}
+  BACKEND_CHAINS_CONFIG: config/chains.json
+  BACKEND_RPC_URLS: ${BACKEND_RPC_URLS:?set BACKEND_RPC_URLS}
+  BACKEND_SIWE_DOMAIN: ${BACKEND_SIWE_DOMAIN:?set BACKEND_SIWE_DOMAIN}
+  BACKEND_SIWE_URI: ${BACKEND_SIWE_URI:?set BACKEND_SIWE_URI}
+  BACKEND_RATE_LIMIT_HASH_SECRET: ${BACKEND_RATE_LIMIT_HASH_SECRET:?set BACKEND_RATE_LIMIT_HASH_SECRET}
+  BACKEND_TRUSTED_PROXY_CIDRS: ${BACKEND_TRUSTED_PROXY_CIDRS:-[]}
+
+x-app-volumes: &app-volumes
+  - ./config/chains.json:/app/config/chains.json:ro
+  - ../contracts/deployments:/contracts/deployments:ro
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: *app-environment
+    volumes: *app-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment: *app-environment
+    volumes: *app-volumes
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 3
+
+  worker:
+    build: .
+    # Match the host owner of the 0600 encrypted keystore bind mount.
+    user: "${BACKEND_UID:-1000}:${BACKEND_GID:-1000}"
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      BACKEND_DISTRIBUTOR_KEYSTORE_PATH: secrets/distributor.json
+      BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD: ${BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD:?set BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD}
+    volumes:
+      - ./config/chains.json:/app/config/chains.json:ro
+      - ../contracts/deployments:/contracts/deployments:ro
+      - ./secrets/distributor.json:/app/secrets/distributor.json:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

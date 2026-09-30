@@ -12,6 +12,7 @@ htmlcov/
 # Local secrets and editor files
 .env
 .env.*
+compose.env
 .idea/
 .vscode/
 
