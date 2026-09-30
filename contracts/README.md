@@ -22,7 +22,7 @@ The 24-hour per-wallet cooldown belongs in FastAPI/PostgreSQL. The backend must 
 
 Foundry uses Solidity 0.8.24, the Paris EVM target, and optimizer with 200 runs. OpenZeppelin Contracts v5.7.0 supplies delayed admin handoff, access control, pause, and reentrancy protection. Confirm the custom chain supports the selected EVM revision before deployment.
 
-From `contracts/`, run `forge build` and `forge test`. The tests cover roles, funding, the per-payout and global caps, exact period rollover, a repeated recipient, deployed contract rejection, admin changes, pausing, withdrawal, and payout amount fuzzing. Phase 2.7 will add a local Anvil deployment script.
+From `contracts/`, run `forge build` and `forge test`. The tests cover roles, funding, the per-payout and global caps, exact period rollover, a repeated recipient, deployed contract rejection, admin changes, pausing, withdrawal, and payout amount fuzzing. The Anvil and configured-chain deployment procedure, including the `.env` loader, is in [`../docs/deployment_runbook.md`](../docs/deployment_runbook.md).
 
 ## Security and deployment assumptions
 

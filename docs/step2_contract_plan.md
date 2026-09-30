@@ -15,7 +15,7 @@ This plan covers the non-upgradeable native-currency contract and a local Anvil 
 
 ## Phase 2.2 — Prepare dependencies and baseline
 
-Pin Solidity, OpenZeppelin Contracts, and `forge-std` in Foundry. Use `AccessControlDefaultAdminRules`, `Pausable`, and `ReentrancyGuard`; confirm the chosen EVM target on the custom chain. Do not create environment files or commit keys.
+Pin Solidity, OpenZeppelin Contracts, and `forge-std` in Foundry. Use `AccessControlDefaultAdminRules`, `Pausable`, and `ReentrancyGuard`; confirm the chosen EVM target on the custom chain. Use an ignored local `contracts/.env` with a tracked `.env.example`; never commit signing keys.
 
 **Gate:** `forge build` and baseline `forge test` pass.
 
@@ -45,6 +45,6 @@ Test deployed contract rejection, admin withdrawal transfer failure, and attempt
 
 ## Phase 2.7 — Local deployment and handoff
 
-Write a Foundry script with explicit admin, distributor, maximum payout, spending limit, and period duration inputs. Deploy to Anvil, fund from treasury, fund the distributor for gas, execute a payout, and verify the event, accounting, and balances. Export ABI and deployment metadata for backend integration. Never commit private keys or Anvil mnemonic files.
+Use the Foundry script with explicit admin, distributor, maximum payout, spending limit, period duration, and expected chain ID inputs. Deploy to Anvil, fund from treasury, fund the distributor for gas, execute a payout, and verify the event, accounting, and balances. Export ABI and deployment metadata for backend integration with `contracts/scripts/export_deployment.py`. See `deployment_runbook.md` for the tested Anvil flow and reusable chain commands. Never commit private keys or Anvil mnemonic files.
 
 **Gate:** reproducible local deployment and payout; `forge test` passes. Custom-chain rehearsal follows after backend and frontend integration.

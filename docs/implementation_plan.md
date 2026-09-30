@@ -28,7 +28,7 @@ Commit the contract ABI and per-chain deployment metadata in a predictable gener
 
 ## Step 1 — Project skeleton and configuration
 
-Create the three subprojects, root README, documented configuration keys, and local PostgreSQL compose configuration. The project owner will create environment files. Define a chain configuration schema containing chain ID, RPC URL, contract address, explorer URL, currency symbol/decimals, payout amount, confirmation depth, enabled flag, and fee mode. In this step, validate configuration shape and required fields. Once a contract is deployed in step 2, backend startup must verify RPC `eth_chainId`, deployed contract code, and role assignments before enabling payouts. Keep admin, treasury, distributor, and validator keys separate.
+Create the three subprojects, root README, documented configuration keys, and local PostgreSQL compose configuration. The deployment launcher reads a local ignored `contracts/.env`, with public sample values in `contracts/.env.example`. Keep signing keys out of this file. Define a chain configuration schema containing chain ID, RPC URL, contract address, explorer URL, currency symbol/decimals, payout amount, confirmation depth, enabled flag, and fee mode. In this step, validate configuration shape and required fields. Once a contract is deployed in step 2, backend startup must verify RPC `eth_chainId`, deployed contract code, and role assignments before enabling payouts. Keep admin, treasury, distributor, and validator keys separate.
 
 **Gate:** the repository layout and local PostgreSQL service are reproducible; configuration parsing rejects missing or malformed values. Live chain and contract checks become a gate after deployment.
 
@@ -85,7 +85,7 @@ Create one responsive page with Tailwind: chain selector, connect wallet, visibl
 
 ## Step 6 — Make additional EVM chains a configuration/deployment operation
 
-Deploy the same reviewed contract bytecode to each new chain, then add its chain config and deployment metadata. Validate RPC chain ID, contract code, roles, balance, fee mode, and a small end-to-end claim before enabling that chain in `/chains`. If a chain's EVM or RPC behavior differs, adapt its backend adapter/config and test it explicitly; do not assume bytecode portability alone guarantees operation. For contract logic changes, follow the spec's migration path: pause V1, deploy V2, move funds through an admin withdrawal, update backend address, test, then enable V2.
+Deploy the same reviewed contract source and build to each new chain, then add its chain config and deployment metadata. The runtime bytecode can differ because `periodDuration` is immutable. Validate RPC chain ID, contract code, roles, balance, fee mode, and a small end-to-end claim before enabling that chain in `/chains`. If a chain's EVM or RPC behavior differs, adapt its backend adapter/config and test it explicitly; do not assume bytecode portability alone guarantees operation. For contract logic changes, follow the spec's migration path: pause V1, deploy V2, move funds through an admin withdrawal, update backend address, test, then enable V2.
 
 ## Suggested build order
 
