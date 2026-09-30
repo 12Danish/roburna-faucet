@@ -1,6 +1,6 @@
 # Roburna faucet backend
 
-Phase 3.1 provides a small FastAPI app with typed chain settings, startup validation, and read-only `/health` and `/chains` endpoints. Phase 3.2 defines PostgreSQL tables as SQLAlchemy ORM models and reserves claims in an atomic database transaction. Phase 3.3 adds SIWE wallet challenges and signature verification. There is no claim submission endpoint or transaction worker yet.
+Phase 3.1 provides a small FastAPI app with typed chain settings, startup validation, and read-only `/health` and `/chains` endpoints. Phase 3.2 defines PostgreSQL tables as SQLAlchemy ORM models and reserves claims in an atomic database transaction. Phase 3.3 adds SIWE wallet challenges and signature verification. The Phase 3.4 claim submission endpoint remains to be implemented; the Phase 3.5 worker is ready to consume reserved claims once that endpoint writes them.
 
 ## Local setup
 
@@ -75,3 +75,29 @@ A concurrency integration test exercises simultaneous reservations and those cla
 `POST /auth/challenge` accepts a wallet address and enabled chain ID, stores a one-time nonce, and returns a short-lived SIWE message for the wallet to sign. Signing is an off-chain message and does not authorize or submit a blockchain transaction. The `verify_wallet_challenge` service verifies the signature and all stored bindings, then checks that the recipient has no deployed code on the selected chain. Phase 3.4 will call this verifier before atomically consuming the challenge and reserving a claim.
 
 The challenge verification tests use generated EOA keys and do not require PostgreSQL or an RPC node.
+
+
+## Distributor worker (Phase 3.5)
+
+Before starting the worker, generate an encrypted keystore from the dedicated distributor key. Run this from `backend/`; the script prompts for the key and keystore password without echoing either value:
+
+```bash
+python scripts/create_keystore.py
+```
+
+Set `BACKEND_DISTRIBUTOR_KEYSTORE_PATH` and `BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD` in the ignored local `.env`. Keep the keystore file out of source control. The derived account must match `distributor_address` on every enabled chain. The worker rechecks the RPC chain ID and role before sending.
+
+The ORM transaction-attempt model now records the gas fields required to rebuild a same-nonce fee replacement and enforces one active attempt per `(chain_id, sender, nonce)`. Generate and review the schema migration, then apply it yourself:
+
+```bash
+alembic revision --autogenerate -m "add distributor nonce coordination"
+alembic upgrade head
+```
+
+Run the worker as a separate process after the API and PostgreSQL are available:
+
+```bash
+python -m app.worker
+```
+
+It polls `reserved` claims, serializes each distributor/chain with a PostgreSQL advisory lock, persists signed transaction bytes before broadcast, and reconciles uncertain sends by hash. It waits for the configured confirmation depth before marking a payout confirmed. After `BACKEND_TRANSACTION_REPLACEMENT_AFTER_SECONDS`, it can replace a stuck transaction at the same nonce with a higher fee; the replacement retains the same recipient and amount. It stops after `BACKEND_TRANSACTION_MAX_REPLACEMENTS` replacements so fee bumps cannot continue without bound. The worker remains idle until a claim is reserved; the Phase 3.4 public claim endpoint is still to be implemented.

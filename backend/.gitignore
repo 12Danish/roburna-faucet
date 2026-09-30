@@ -17,3 +17,6 @@ htmlcov/
 
 # Keep the documented template while excluding local dotenv files.
 !.env.example
+
+# Encrypted local signer keystores
+secrets/

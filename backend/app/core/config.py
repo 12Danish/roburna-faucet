@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     siwe_domain: str = "localhost:3000"
     siwe_uri: str = "http://localhost:3000"
     challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    distributor_keystore_path: Path | None = None
+    distributor_keystore_password: SecretStr | None = None
+    worker_poll_interval_seconds: int = Field(default=2, ge=1, le=60)
+    transaction_replacement_after_seconds: int = Field(default=180, ge=30, le=3600)
+    transaction_fee_bump_percent: int = Field(default=20, ge=10, le=100)
+    transaction_max_replacements: int = Field(default=3, ge=0, le=10)
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -42,10 +48,22 @@ class Settings(BaseSettings):
             or parsed_uri.netloc != self.siwe_domain
         ):
             raise ValueError("siwe_domain must match the host and port in siwe_uri")
+        if (self.distributor_keystore_path is None) != (self.distributor_keystore_password is None):
+            raise ValueError(
+                "distributor_keystore_path and distributor_keystore_password must be configured together"
+            )
         return self
 
     def resolved_chains_config(self) -> Path:
         path = self.chains_config
+        if not path.is_absolute():
+            path = BACKEND_ROOT / path
+        return path.resolve()
+
+    def resolved_distributor_keystore(self) -> Path | None:
+        path = self.distributor_keystore_path
+        if path is None:
+            return None
         if not path.is_absolute():
             path = BACKEND_ROOT / path
         return path.resolve()

@@ -138,6 +138,15 @@ class TransactionAttempt(Base):
         ),
         UniqueConstraint("claim_id", "attempt_number", name="attempt_number_per_claim"),
         UniqueConstraint("chain_id", "transaction_hash", name="attempt_hash_per_chain"),
+        Index(
+            "transaction_attempts_one_active_per_nonce",
+            "chain_id",
+            "sender_address",
+            "sender_nonce",
+            unique=True,
+            postgresql_where=text("status IN ('prepared', 'broadcast_unknown', 'submitted')"),
+        ),
+        Index("transaction_attempts_by_sender_nonce", "chain_id", "sender_address", "sender_nonce"),
         Index("transaction_attempts_by_claim", "claim_id", "created_at"),
     )
 
@@ -150,6 +159,10 @@ class TransactionAttempt(Base):
     transaction_hash: Mapped[str] = mapped_column(String(66), nullable=False)
     signed_raw_transaction: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False)
+    gas_limit: Mapped[Decimal | None] = mapped_column(Numeric(78, 0))
+    gas_price_wei: Mapped[Decimal | None] = mapped_column(Numeric(78, 0))
+    max_fee_per_gas_wei: Mapped[Decimal | None] = mapped_column(Numeric(78, 0))
+    max_priority_fee_per_gas_wei: Mapped[Decimal | None] = mapped_column(Numeric(78, 0))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
