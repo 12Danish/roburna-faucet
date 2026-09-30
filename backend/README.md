@@ -1,6 +1,6 @@
 # Roburna faucet backend
 
-Phase 3.1 adds the FastAPI application skeleton, validated per-chain settings, startup checks, and read-only `/health` and `/chains` endpoints. It does not submit payouts.
+Phase 3.1 provides a small FastAPI app with typed chain settings, startup validation, and read-only `/health` and `/chains` endpoints. Phase 3.2 defines PostgreSQL tables as SQLAlchemy ORM models and reserves claims in an atomic database transaction. There are no payout endpoints or transaction worker yet.
 
 ## Local setup
 
@@ -11,32 +11,34 @@ python -m pip install -r requirements.txt
 cp config/chains.example.json config/chains.json
 ```
 
-A local `backend/.env` template is present and ignored by Git. Replace `YOUR_PASSWORD` in `BACKEND_DATABASE_URL` with the password for your local PostgreSQL role. To create that role and the database in WSL, start PostgreSQL and open its admin console:
+A local `backend/.env` template is present and ignored by Git. Replace `YOUR_PASSWORD` in `BACKEND_DATABASE_URL` with the password for your local PostgreSQL role. To create that role and database in WSL, start PostgreSQL and open its admin console:
 
 ```bash
 sudo service postgresql start
 sudo -u postgres psql
 ```
 
-Then run these SQL commands in `psql`, choosing a password you can put in `backend/.env`:
+At the `psql` prompt, choose a local password and create the backend role and database:
 
 ```sql
-CREATE ROLE faucet_app WITH LOGIN PASSWORD 'choose_a_local_password';
+CREATE USER faucet_app WITH PASSWORD 'choose_a_local_password';
 CREATE DATABASE roburna_faucet OWNER faucet_app;
 \q
 ```
 
-Use a URL-safe password (letters and numbers) for this local setup, or URL-encode special characters in the connection URL. The configured URL should look like:
+The connection URL in `.env` should then look like:
 
 ```text
 postgresql://faucet_app:YOUR_PASSWORD@127.0.0.1:5432/roburna_faucet
 ```
 
-Run the migration after setting the URL:
+Use a URL-safe password for this local setup, or URL-encode special characters in the URL. Create the tables from the SQLAlchemy definitions with this command, run from `backend/`:
 
 ```bash
-alembic upgrade head
+python -m app.db.create_schema
 ```
+
+The table definitions live in `app/db/models.py`. `create_all` creates missing tables and indexes; it does not alter existing tables when a model changes. Since this is the local development stage, recreate the local database if you need to reset a changed schema. Before using persistent or public deployments, add managed schema migrations.
 
 Start PostgreSQL and Anvil. After deploying the faucet to Anvil, export deployment metadata from the `contracts/` directory:
 
@@ -44,20 +46,20 @@ Start PostgreSQL and Anvil. After deploying the faucet to Anvil, export deployme
 python3 scripts/export_deployment.py 31337
 ```
 
-The deployment export is ignored by Git. The example chain entry starts with `enabled: false` because Anvil addresses reset when the node is restarted. Enable it only after deployment and confirm the deployment file points to the current Anvil deployment. Set `BACKEND_DATABASE_URL` and `BACKEND_RPC_URLS` in the local `.env` file.
+The deployment export is ignored by Git. The example chain entry starts with `enabled: false` because Anvil addresses reset when the node restarts. Enable it only after deployment and confirm the deployment file points to the current deployment.
 
-Run the development server from `backend/`:
+Run the API from `backend/`:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then open `http://127.0.0.1:8000/docs`. `/health` reports readiness for PostgreSQL and enabled RPCs; `/chains` lists enabled public chain metadata. The server refuses to start if an enabled chain has a wrong RPC chain ID, missing faucet code, a bad deployment record, a missing distributor role, or a configured payout over the on-chain limit.
+Then open `http://127.0.0.1:8000/docs`. `/health` checks PostgreSQL and enabled RPCs; `/chains` lists enabled public chain metadata. The server refuses to enable a chain with a mismatched RPC chain ID, missing faucet code, bad deployment metadata, missing distributor role, or a payout over the on-chain limit.
 
 Never put private keys or authenticated RPC URLs in `chains.json` or commit `.env`. The distributor address is public configuration; signer key handling is part of Phase 3.5.
 
-## Phase 3.2 database setup
+## Claim reservation behavior
 
-After PostgreSQL is available and `.env` contains `BACKEND_DATABASE_URL`, run the `alembic upgrade head` command shown above from `backend/` to apply the versioned schema migration. The migration creates `challenges`, `claims`, and `transaction_attempts`. The backend’s claim reservation function consumes a valid, already-verified challenge and inserts a `reserved` claim in one short PostgreSQL transaction. A transaction-scoped advisory lock serializes reservations for the same chain and wallet; a partial unique index is the database-level backstop. Cooldown is measured from a confirmed claim. No blockchain transaction is sent by this phase.
+`app/db/claims.py` consumes a valid, already-verified challenge and reserves one claim in a short SQLAlchemy transaction. It takes a PostgreSQL transaction-level advisory lock for the chain and wallet, checks for an active claim and recent confirmation, consumes the challenge, then inserts a `reserved` claim. The partial unique index is the database backstop. RPC calls stay outside this transaction. An uncertain broadcast remains active; a known failure frees the wallet to try again; the cooldown starts at confirmation.
 
-A concurrency integration test uses a **dedicated disposable PostgreSQL database**. Set `FAUCET_TEST_DATABASE_URL` to that database and run `pytest` from `backend/`; without it, the integration test is skipped. Do not point it at a database containing application data because it applies the schema migration.
+A concurrency integration test exercises simultaneous reservations and those claim states. Set `FAUCET_TEST_DATABASE_URL` to a dedicated disposable PostgreSQL database before running `pytest` from `backend/`. The test creates missing tables from the same ORM metadata and removes its rows afterward. Do not point it at a database containing application data.

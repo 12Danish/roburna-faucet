@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from psycopg import Error as PsycopgError
-from psycopg_pool import PoolTimeout
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.dependencies import get_runtime
 from app.api.schemas import HealthResponse
@@ -15,10 +15,10 @@ def health(runtime: Runtime = Depends(get_runtime)) -> HealthResponse:
     checks: dict[str, str] = {}
 
     try:
-        with runtime.database.connection(timeout=2) as connection:
-            connection.execute("SELECT 1")
+        with runtime.database.connect() as connection:
+            connection.execute(text("SELECT 1"))
         checks["database"] = "ok"
-    except (PsycopgError, PoolTimeout):
+    except SQLAlchemyError:
         checks["database"] = "unavailable"
 
     for chain_id, chain in runtime.chains.items():

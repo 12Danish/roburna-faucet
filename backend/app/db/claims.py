@@ -1,9 +1,13 @@
 import re
 from dataclasses import dataclass
-from datetime import datetime
-from uuid import UUID, uuid4
+from datetime import datetime, timedelta
+from decimal import Decimal
+from uuid import UUID
 
-from psycopg_pool import ConnectionPool
+from sqlalchemy import func, select, text, update
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.db.models import ACTIVE_CLAIM_STATES, Challenge, Claim
 
 
 class ReservationRejected(Exception):
@@ -32,7 +36,7 @@ class ClaimReservation:
 
 
 def reserve_claim(
-    database: ConnectionPool,
+    sessions: sessionmaker[Session],
     *,
     chain_id: int,
     wallet_address: str,
@@ -40,7 +44,7 @@ def reserve_claim(
     amount_wei: int,
     cooldown_seconds: int,
 ) -> ClaimReservation:
-    """Consume a verified challenge and reserve one payout in a single DB transaction.
+    """Consume a verified challenge and reserve one payout in one DB transaction.
 
     The caller must verify the wallet signature before calling this function. No RPC
     calls belong here; the short transaction protects only PostgreSQL state.
@@ -54,88 +58,81 @@ def reserve_claim(
         raise ValueError("cooldown_seconds must be positive")
 
     lock_key = f"{chain_id}:{wallet}"
-    with database.connection() as connection:
-        # Serialize reservations for this chain/wallet, including when no claim row exists yet.
-        connection.execute(
-            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-            (lock_key,),
+    with sessions.begin() as session:
+        # Serialize reservations for this chain/wallet, even before a claim row exists.
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": lock_key},
         )
-        challenge = connection.execute(
-            """
-            SELECT chain_id, wallet_address, expires_at, consumed_at
-            FROM challenges
-            WHERE id = %s
-            FOR UPDATE
-            """,
-            (challenge_id,),
-        ).fetchone()
+        challenge = session.scalar(
+            select(Challenge).where(Challenge.id == challenge_id).with_for_update()
+        )
         if challenge is None:
             raise ChallengeUnavailable
 
-        challenge_chain_id, challenge_wallet, expires_at, consumed_at = challenge
-        now = connection.execute("SELECT clock_timestamp()").fetchone()[0]
+        now = session.scalar(select(func.clock_timestamp()))
         if (
-            int(challenge_chain_id) != chain_id
-            or challenge_wallet != wallet
-            or consumed_at is not None
-            or expires_at <= now
+            int(challenge.chain_id) != chain_id
+            or challenge.wallet_address != wallet
+            or challenge.consumed_at is not None
+            or challenge.expires_at <= now
         ):
             raise ChallengeUnavailable
 
-        pending = connection.execute(
-            """
-            SELECT 1
-            FROM claims
-            WHERE chain_id = %s
-              AND wallet_address = %s
-              AND status IN ('reserved', 'submitted', 'broadcast_unknown')
-            LIMIT 1
-            """,
-            (chain_id, wallet),
-        ).fetchone()
-        if pending is not None:
+        pending_id = session.scalar(
+            select(Claim.id)
+            .where(
+                Claim.chain_id == Decimal(chain_id),
+                Claim.wallet_address == wallet,
+                Claim.status.in_(ACTIVE_CLAIM_STATES),
+            )
+            .limit(1)
+        )
+        if pending_id is not None:
             raise ClaimAlreadyPending
 
-        cooldown = connection.execute(
-            """
-            SELECT confirmed_at + (%s * INTERVAL '1 second')
-            FROM claims
-            WHERE chain_id = %s
-              AND wallet_address = %s
-              AND status = 'confirmed'
-            ORDER BY confirmed_at DESC
-            LIMIT 1
-            """,
-            (cooldown_seconds, chain_id, wallet),
-        ).fetchone()
-        if cooldown is not None and cooldown[0] > now:
-            raise WalletCooldownActive(cooldown[0])
+        next_eligible_at = session.scalar(
+            select(Claim.confirmed_at + timedelta(seconds=cooldown_seconds))
+            .where(
+                Claim.chain_id == Decimal(chain_id),
+                Claim.wallet_address == wallet,
+                Claim.status == "confirmed",
+            )
+            .order_by(Claim.confirmed_at.desc())
+            .limit(1)
+        )
+        if next_eligible_at is not None and next_eligible_at > now:
+            raise WalletCooldownActive(next_eligible_at)
 
-        consumed = connection.execute(
-            """
-            UPDATE challenges
-            SET consumed_at = clock_timestamp()
-            WHERE id = %s
-              AND consumed_at IS NULL
-              AND expires_at > clock_timestamp()
-            RETURNING id
-            """,
-            (challenge_id,),
-        ).fetchone()
-        if consumed is None:
+        consumed_id = session.scalar(
+            update(Challenge)
+            .where(
+                Challenge.id == challenge_id,
+                Challenge.consumed_at.is_(None),
+                Challenge.expires_at > func.clock_timestamp(),
+            )
+            .values(consumed_at=func.clock_timestamp())
+            .returning(Challenge.id)
+        )
+        if consumed_id is None:
             raise ChallengeUnavailable
 
-        claim_id = uuid4()
-        claim = connection.execute(
-            """
-            INSERT INTO claims (id, chain_id, wallet_address, challenge_id, amount_wei, status)
-            VALUES (%s, %s, %s, %s, %s, 'reserved')
-            RETURNING id, status, reserved_at
-            """,
-            (claim_id, chain_id, wallet, challenge_id, amount_wei),
-        ).fetchone()
+        claim = Claim(
+            chain_id=Decimal(chain_id),
+            wallet_address=wallet,
+            challenge_id=challenge_id,
+            amount_wei=Decimal(amount_wei),
+            status="reserved",
+        )
+        session.add(claim)
+        session.flush()
+        reservation = ClaimReservation(
+            claim_id=claim.id,
+            status=claim.status,
+            reserved_at=claim.reserved_at,
+        )
 
-    return ClaimReservation(claim_id=claim[0], status=claim[1], reserved_at=claim[2])
+    return reservation
 
 
 def _normalize_wallet(address: str) -> str:

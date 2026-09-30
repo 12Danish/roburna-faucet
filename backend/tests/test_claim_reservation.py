@@ -1,73 +1,59 @@
 import os
 import secrets
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Barrier
 from typing import Iterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from psycopg_pool import ConnectionPool
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import get_settings
+from app.db.base import Base
 from app.db.claims import (
     ClaimAlreadyPending,
     ClaimReservation,
     WalletCooldownActive,
     reserve_claim,
 )
+from app.db.models import Challenge, Claim, TransactionAttempt
+from app.db.engine import create_database_engine, create_session_factory
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def database() -> Iterator[ConnectionPool]:
+def database() -> Iterator[sessionmaker[Session]]:
     database_url = os.getenv("FAUCET_TEST_DATABASE_URL")
     if not database_url:
         pytest.skip("set FAUCET_TEST_DATABASE_URL to a dedicated PostgreSQL test database")
 
-    previous_url = os.environ.get("BACKEND_DATABASE_URL")
-    os.environ["BACKEND_DATABASE_URL"] = database_url
-    get_settings.cache_clear()
-    try:
-        alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
-        alembic_config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
-        command.upgrade(alembic_config, "head")
-    finally:
-        if previous_url is None:
-            os.environ.pop("BACKEND_DATABASE_URL", None)
-        else:
-            os.environ["BACKEND_DATABASE_URL"] = previous_url
-        get_settings.cache_clear()
-
-    pool = ConnectionPool(
-        conninfo=database_url,
-        min_size=2,
-        max_size=4,
-        open=True,
-        name="faucet-test",
-    )
-    pool.wait(timeout=5)
-    yield pool
-    pool.close()
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    sessions = create_session_factory(engine)
+    yield sessions
+    engine.dispose()
 
 
-def test_concurrent_reservations_for_one_wallet_create_one_claim(database: ConnectionPool) -> None:
+def test_concurrent_reservations_for_one_wallet_create_one_claim(database: sessionmaker[Session]) -> None:
     chain_id = 31337
     wallet = "0x" + secrets.token_hex(20)
     challenge_ids = [uuid4(), uuid4(), uuid4()]
 
-    with database.connection() as connection:
-        for challenge_id in challenge_ids:
-            connection.execute(
-                """
-                INSERT INTO challenges (id, chain_id, wallet_address, nonce, message, expires_at)
-                VALUES (%s, %s, %s, %s, %s, clock_timestamp() + INTERVAL '5 minutes')
-                """,
-                (challenge_id, chain_id, wallet, uuid4().hex, "test challenge"),
+    with database.begin() as session:
+        session.add_all(
+            Challenge(
+                id=challenge_id,
+                chain_id=chain_id,
+                wallet_address=wallet,
+                nonce=uuid4().hex,
+                message="test challenge",
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
             )
+            for challenge_id in challenge_ids
+        )
 
     barrier = Barrier(2)
 
@@ -92,19 +78,17 @@ def test_concurrent_reservations_for_one_wallet_create_one_claim(database: Conne
         assert sum(isinstance(result, ClaimReservation) for result in results) == 1
         assert results.count("pending") == 1
 
-        with database.connection() as connection:
-            claim_count = connection.execute(
-                "SELECT count(*) FROM claims WHERE chain_id = %s AND wallet_address = %s",
-                (chain_id, wallet),
-            ).fetchone()[0]
+        with database() as session:
+            claim_count = len(
+                session.scalars(
+                    select(Claim.id).where(Claim.chain_id == chain_id, Claim.wallet_address == wallet)
+                ).all()
+            )
         assert claim_count == 1
 
         first_claim = next(result for result in results if isinstance(result, ClaimReservation))
-        with database.connection() as connection:
-            connection.execute(
-                "UPDATE claims SET status = 'broadcast_unknown' WHERE id = %s",
-                (first_claim.claim_id,),
-            )
+        with database.begin() as session:
+            session.get(Claim, first_claim.claim_id).status = "broadcast_unknown"
         with pytest.raises(ClaimAlreadyPending):
             reserve_claim(
                 database,
@@ -115,15 +99,11 @@ def test_concurrent_reservations_for_one_wallet_create_one_claim(database: Conne
                 cooldown_seconds=24 * 60 * 60,
             )
 
-        with database.connection() as connection:
-            connection.execute(
-                """
-                UPDATE claims
-                SET status = 'failed', failed_at = clock_timestamp(), failure_code = 'test_revert'
-                WHERE id = %s
-                """,
-                (first_claim.claim_id,),
-            )
+        with database.begin() as session:
+            failed_claim = session.get(Claim, first_claim.claim_id)
+            failed_claim.status = "failed"
+            failed_claim.failed_at = datetime.now(timezone.utc)
+            failed_claim.failure_code = "test_revert"
         second_claim = reserve_claim(
             database,
             chain_id=chain_id,
@@ -133,15 +113,11 @@ def test_concurrent_reservations_for_one_wallet_create_one_claim(database: Conne
             cooldown_seconds=24 * 60 * 60,
         )
 
-        with database.connection() as connection:
-            connection.execute(
-                """
-                UPDATE claims
-                SET status = 'confirmed', failed_at = NULL, confirmed_at = clock_timestamp()
-                WHERE id = %s
-                """,
-                (second_claim.claim_id,),
-            )
+        with database.begin() as session:
+            confirmed_claim = session.get(Claim, second_claim.claim_id)
+            confirmed_claim.status = "confirmed"
+            confirmed_claim.failed_at = None
+            confirmed_claim.confirmed_at = datetime.now(timezone.utc)
         with pytest.raises(WalletCooldownActive):
             reserve_claim(
                 database,
@@ -152,9 +128,8 @@ def test_concurrent_reservations_for_one_wallet_create_one_claim(database: Conne
                 cooldown_seconds=24 * 60 * 60,
             )
     finally:
-        with database.connection() as connection:
-            connection.execute(
-                "DELETE FROM claims WHERE chain_id = %s AND wallet_address = %s",
-                (chain_id, wallet),
+        with database.begin() as session:
+            session.execute(
+                delete(Claim).where(Claim.chain_id == chain_id, Claim.wallet_address == wallet)
             )
-            connection.execute("DELETE FROM challenges WHERE id = ANY(%s)", (challenge_ids,))
+            session.execute(delete(Challenge).where(Challenge.id.in_(challenge_ids)))
