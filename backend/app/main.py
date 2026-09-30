@@ -4,7 +4,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
 
-from app.api.routes import chains, health
+from app.api.routes import auth, chains, health
 from app.core.chain_config import load_chain_definitions
 from app.core.config import get_settings
 from app.core.runtime import Runtime
@@ -44,4 +44,5 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(chains.router)

@@ -8,3 +8,6 @@ pytest==9.1.1
 httpx==0.28.1
 SQLAlchemy==2.0.54
 alembic==1.20.0
+siwe==4.4.0
+# SIWE 4.4.0's ABNF grammar is incompatible with ABNF 2.9.0's stricter core-rule validation.
+abnf==2.8.1

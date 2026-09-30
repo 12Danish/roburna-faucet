@@ -1,6 +1,6 @@
 # Roburna faucet backend
 
-Phase 3.1 provides a small FastAPI app with typed chain settings, startup validation, and read-only `/health` and `/chains` endpoints. Phase 3.2 defines PostgreSQL tables as SQLAlchemy ORM models and reserves claims in an atomic database transaction. There are no payout endpoints or transaction worker yet.
+Phase 3.1 provides a small FastAPI app with typed chain settings, startup validation, and read-only `/health` and `/chains` endpoints. Phase 3.2 defines PostgreSQL tables as SQLAlchemy ORM models and reserves claims in an atomic database transaction. Phase 3.3 adds SIWE wallet challenges and signature verification. There is no claim submission endpoint or transaction worker yet.
 
 ## Local setup
 
@@ -11,7 +11,7 @@ python -m pip install -r requirements.txt
 cp config/chains.example.json config/chains.json
 ```
 
-A local `backend/.env` template is present and ignored by Git. Replace `YOUR_PASSWORD` in `BACKEND_DATABASE_URL` with the password for your local PostgreSQL role. To create that role and database in WSL, start PostgreSQL and open its admin console:
+A local `backend/.env` template is present and ignored by Git. Replace `YOUR_PASSWORD` in `BACKEND_DATABASE_URL` with the password for your local PostgreSQL role. Set `BACKEND_SIWE_DOMAIN` and `BACKEND_SIWE_URI` to the frontend origin that users should see in the wallet signing prompt; local defaults use `localhost:3000`. The challenge lifetime defaults to 300 seconds. To create that role and database in WSL, start PostgreSQL and open its admin console:
 
 ```bash
 sudo service postgresql start
@@ -69,3 +69,9 @@ Never put private keys or authenticated RPC URLs in `chains.json` or commit `.en
 `app/services/claims.py` consumes a valid, already-verified challenge and reserves one claim in a short SQLAlchemy transaction. It takes a PostgreSQL transaction-level advisory lock for the chain and wallet, checks for an active claim and recent confirmation, consumes the challenge, then inserts a `reserved` claim. The partial unique index is the database backstop. RPC calls stay outside this transaction. An uncertain broadcast remains active; a known failure frees the wallet to try again; the cooldown starts at confirmation.
 
 A concurrency integration test exercises simultaneous reservations and those claim states. Set `FAUCET_TEST_DATABASE_URL` to a dedicated disposable PostgreSQL database before running `pytest` from `backend/`. The test creates its tables from the ORM metadata and removes its rows afterward. Do not point it at a database containing application data.
+
+## Wallet challenge (Phase 3.3)
+
+`POST /auth/challenge` accepts a wallet address and enabled chain ID, stores a one-time nonce, and returns a short-lived SIWE message for the wallet to sign. Signing is an off-chain message and does not authorize or submit a blockchain transaction. The `verify_wallet_challenge` service verifies the signature and all stored bindings, then checks that the recipient has no deployed code on the selected chain. Phase 3.4 will call this verifier before atomically consuming the challenge and reserving a claim.
+
+The challenge verification tests use generated EOA keys and do not require PostgreSQL or an RPC node.

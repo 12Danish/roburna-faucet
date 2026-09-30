@@ -1,4 +1,7 @@
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class ChainResponse(BaseModel):
@@ -21,3 +24,16 @@ class ChainListResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     checks: dict[str, str]
+
+
+class ChallengeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    wallet_address: str = Field(pattern=r"^0[xX][0-9a-fA-F]{40}$")
+    chain_id: int = Field(gt=0, le=2**256 - 1)
+
+
+class ChallengeResponse(BaseModel):
+    challenge_id: UUID
+    message: str
+    expires_at: datetime
