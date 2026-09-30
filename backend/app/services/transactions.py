@@ -321,16 +321,20 @@ class FaucetTransactionWorker:
                 raise RuntimeError("RPC returned a hash that differs from the signed transaction")
             status = "submitted"
             failure_code = None
-        except Exception:
+        except Exception as exc:
             # A timeout or already-known response is ambiguous until queried by hash.
+            pool_unavailable = "transaction pool not enabled" in str(exc).lower()
             try:
                 chain.web3.eth.get_transaction(expected_hash)
                 status = "submitted"
                 failure_code = None
             except Exception:
                 status = "broadcast_unknown"
-                failure_code = "broadcast_response_unknown"
-                logger.warning("Broadcast outcome unknown for transaction %s", expected_hash)
+                failure_code = (
+                    "rpc_transaction_pool_unavailable"
+                    if pool_unavailable else "broadcast_response_unknown"
+                )
+                logger.warning("Broadcast unresolved for transaction %s: %s", expected_hash, failure_code)
 
         with self.sessions.begin() as session:
             attempt = session.get(TransactionAttempt, attempt_id)
@@ -339,9 +343,9 @@ class FaucetTransactionWorker:
                 return
             attempt.status = status
             attempt.failure_code = failure_code
-            if attempt.broadcast_at is None:
-                attempt.broadcast_at = datetime.now(timezone.utc)
+            attempt.broadcast_at = datetime.now(timezone.utc)
             claim.status = status
+            claim.failure_code = failure_code
             if claim.submitted_at is None:
                 claim.submitted_at = datetime.now(timezone.utc)
 
@@ -385,6 +389,7 @@ class FaucetTransactionWorker:
             attempt_number = active.attempt_number
             created_at = active.created_at
             gas_fields = _attempt_fee_fields(active)
+            last_broadcast_at = active.broadcast_at
         try:
             chain.web3.eth.get_transaction(tx_hash)
             is_in_mempool = True
@@ -410,6 +415,8 @@ class FaucetTransactionWorker:
             self._mark_broadcast_submitted(claim_id, active_id)
             return True
         if not is_in_mempool and status in {"prepared", "broadcast_unknown"}:
+            if last_broadcast_at and (datetime.now(timezone.utc) - _as_utc(last_broadcast_at)).total_seconds() < 30:
+                return False
             self._broadcast_attempt(chain, claim_id, active_id)
             return True
         if age >= self.replacement_after_seconds:
@@ -497,6 +504,7 @@ class FaucetTransactionWorker:
                 claim.failure_code = None
             else:
                 claim.status = "submitted"
+                claim.failure_code = None
                 claim.confirmed_at = None
             return True
 
@@ -645,6 +653,7 @@ class FaucetTransactionWorker:
                     attempt.broadcast_at = now
             if claim is not None and claim.status in ACTIVE_CLAIM_STATES:
                 claim.status = "submitted"
+                claim.failure_code = None
                 if claim.submitted_at is None:
                     claim.submitted_at = now
 

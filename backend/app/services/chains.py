@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from web3 import HTTPProvider, Web3
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from app.core.chain_config import ChainDefinition
 
@@ -46,6 +47,8 @@ def connect_chain(
         raise RuntimeError(f"Deployment ABI for chain {definition.chain_id} must be a JSON array")
 
     web3 = Web3(HTTPProvider(rpc_url, request_kwargs={"timeout": 5}))
+    if definition.poa_compatibility:
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     try:
         if not web3.is_connected():
             raise RuntimeError(f"RPC is unreachable for chain {definition.chain_id}")

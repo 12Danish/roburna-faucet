@@ -79,6 +79,8 @@ CREATE DATABASE roburna_faucet OWNER faucet_app;
 \q
 ```
 
+For chains with oversized PoA block `extraData` (including Roburna Testnet), set `poa_compatibility: true` in that chain's JSON definition. The RPC must also accept `eth_sendRawTransaction`; a node that answers reads but has its transaction pool disabled cannot serve faucet payouts. If the worker reports `rpc_transaction_pool_unavailable`, the signed claim remains saved and is retried with a short backoff when the RPC becomes write-capable.
+
 In the ignored `.env`, set `BACKEND_DATABASE_URL`, `BACKEND_RPC_URLS`, `BACKEND_SIWE_DOMAIN`, and `BACKEND_SIWE_URI`. Generate `BACKEND_RATE_LIMIT_HASH_SECRET` with `python -c "import secrets; print(secrets.token_hex(32))"`; keep it stable across restarts. Leave `BACKEND_TRUSTED_PROXY_CIDRS=[]` for direct local access. When a reverse proxy is introduced, list only its actual network ranges there. The full setting list is in [`.env.example`](.env.example). Keep credential-bearing RPC URLs and keystore passwords out of Git.
 
 Start Anvil and deploy/fund the contract according to the [deployment runbook](../docs/deployment_runbook.md). From `contracts/`, export the deployment with `python3 scripts/export_deployment.py 31337`. Then set `enabled: true` in the ignored `backend/config/chains.json` only when it points to the current deployment and the configured distributor has the contract role. A fresh Anvil node loses the previous deployment.

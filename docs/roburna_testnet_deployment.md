@@ -75,6 +75,8 @@ The file contains exactly one setting: `BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD=<t
 
 The deployment JSON, `config/chains.json`, and encrypted keystore are ignored by Git. Back up the PostgreSQL volume and these files securely. If you already have claim history in a different PostgreSQL database, migrate that history before switching to the Compose database; otherwise the wallet cooldown history starts empty.
 
+Roburna block headers require Web3.py PoA compatibility; the example chain JSON sets `poa_compatibility: true`. The configured RPC must accept `eth_sendRawTransaction` as well as reads. If a claim shows `rpc_transaction_pool_unavailable`, the public node is rejecting broadcasts with `Transaction pool not enabled`; ask the Roburna node operator to restore a synced, transaction-accepting RPC or provide another write-capable chain-159 endpoint. The existing claim ID is retained and the worker retries the same signed transaction. Do not submit another claim or reset the database.
+
 ## 4. Start and check Compose
 
 From `backend/`:

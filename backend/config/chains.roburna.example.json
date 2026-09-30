@@ -13,7 +13,8 @@
       "fee_mode": "legacy",
       "explorer_url": null,
       "enabled": true,
-      "distributor_address": "0x546501e0c1d35822CcA63ef2A4787Ff1c2367079"
+      "distributor_address": "0x546501e0c1d35822CcA63ef2A4787Ff1c2367079",
+      "poa_compatibility": true
     }
   ]
 }

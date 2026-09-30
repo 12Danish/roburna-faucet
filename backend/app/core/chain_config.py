@@ -18,6 +18,7 @@ class ChainDefinition(BaseModel):
     cooldown_seconds: PositiveInt = 86400
     confirmation_depth: PositiveInt = 1
     fee_mode: Literal["legacy", "eip1559"]
+    poa_compatibility: bool = False
     explorer_url: HttpUrl | None = None
     enabled: bool = False
     distributor_address: str
