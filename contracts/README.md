@@ -1,32 +1,77 @@
 # NativeFaucet contract
 
-`NativeFaucet` holds a chain's native currency and pays recipients through an authorized distributor. It is non-upgradeable and deployed separately on each EVM chain. Recipients do not call the contract to claim.
+[Project overview](../README.md) · [Original contract spec sheet](../docs/native_faucet_contract_spec.docx) · [Deployment runbook](../docs/deployment_runbook.md)
 
-## Contract rules
+[`NativeFaucet.sol`](src/NativeFaucet.sol) is a non-upgradeable contract that holds an EVM chain's **native currency** and transfers it when an authorized distributor calls `dispense`. It does not mint tokens or implement ERC-20. The recipient signs an off-chain request through the [backend](../backend/README.md); the recipient does not call `dispense` or pay gas.
 
-- Deploy with `NativeFaucet(admin, distributor, initialMaxPayout, initialSpendingLimit, periodDurationSeconds)`. Addresses must be distinct and nonzero; the three numeric values must be positive. Amounts use the native currency's smallest unit.
-- The admin has `DEFAULT_ADMIN_ROLE`; the backend signer has `DISTRIBUTOR_ROLE`. Only a distributor can call `dispense(recipient, amount)`. The admin can grant and revoke distributor access. OpenZeppelin `AccessControlDefaultAdminRules` restricts the admin role to one account and requires a two-step transfer with a one-day delay.
-- Each payout requires an unpaused contract, a nonzero recipient with no deployed code, a positive amount no greater than `maxPayout`, sufficient contract balance, and enough remaining room under `spendingLimit` for the current period.
-- Periods are fixed windows aligned to Unix time zero: `currentPeriodStart() = block.timestamp - block.timestamp % periodDuration`. For a one-day duration, boundaries are midnight UTC. `periodDuration` cannot change after deployment. `periodStart` and `periodSpent` are updated on a successful payout; `spentInCurrentPeriod()` returns zero if the stored accounting is from an older period.
-- Accounting is updated before the native transfer. A failed transfer reverts both the payment and accounting. `dispense` and `withdraw` have a reentrancy guard.
-- `setMaxPayout` and `setSpendingLimit` are admin-only, require a positive value, and emit update events. Lowering `spendingLimit` below spending already recorded blocks further payouts until the next period or a higher limit is set; it does not erase past spending.
-- `pause` and `unpause` are admin-only. Anyone can fund through `receive()` while paused. The admin can `withdraw(recipient, amount)` while paused. Funding, payouts, and withdrawals emit events. Withdrawals do not count as faucet spending because the period limit applies to `dispense` payouts.
+## Contract project files
 
-## Backend boundary
+| Path | Purpose |
+| --- | --- |
+| [`src/NativeFaucet.sol`](src/NativeFaucet.sol) | Contract implementation and on-chain rules. |
+| [`test/`](test/) | Foundry tests for payouts, roles, funding, admin actions, and failure paths. |
+| [`script/DeployNativeFaucet.s.sol`](script/DeployNativeFaucet.s.sol) | Foundry deployment script. |
+| [`scripts/deploy.py`](scripts/deploy.py), [`scripts/export_deployment.py`](scripts/export_deployment.py) | Environment-aware deployment launcher and public ABI/deployment exporter. |
+| [`foundry.toml`](foundry.toml), [`.env.example`](.env.example) | Compiler/EVM settings and local deployment configuration template. |
 
-The contract rejects deployed contract recipients at payout time using `recipient.code.length != 0`. This excludes smart contract wallets. An address with no code is not necessarily an EOA: it could be under construction or awaiting deployment. The backend must recover the signer of a fresh wallet challenge and require it to match the recipient address, then check for deployed code on the selected chain.
+Generated `out/`, `cache/`, `broadcast/`, and local `deployments/` data belong to the build/deployment workflow; the live `.env` is ignored by Git.
 
-The 24-hour per-wallet cooldown belongs in FastAPI/PostgreSQL. The backend must serialize claims per chain and wallet, block pending or too-soon claims, and reconcile uncertain broadcasts before releasing a reservation. The contract has no recipient cooldown mapping; an authorized distributor can pay a wallet again within the period if the global limit permits it. Protect the distributor key. The backend is scheduled for Step 3 and has not been implemented yet.
+## Roles and funds
 
-## Toolchain and verification
+| Actor | Responsibility |
+| --- | --- |
+| Admin | Owns `DEFAULT_ADMIN_ROLE`; manages the distributor role, limits, pause state, and withdrawals. Admin transfer is a two-step OpenZeppelin handoff with a one-day delay. |
+| Distributor | Owns `DISTRIBUTOR_ROLE`; calls `dispense(recipient, amount)` and pays gas. The backend worker holds this signer. |
+| Treasury | External wallet that refills the faucet contract. It has no special contract role. |
+| Recipient | Receives native currency. The current contract rejects addresses with deployed code. |
 
-Foundry uses Solidity 0.8.24, the Paris EVM target, and optimizer with 200 runs. OpenZeppelin Contracts v5.7.0 supplies delayed admin handoff, access control, pause, and reentrancy protection. Confirm the custom chain supports the selected EVM revision before deployment.
+Anyone may send native currency to `receive()`. This lets a treasury or another wallet refill the contract without a privileged funding transaction. Only the distributor can make faucet payouts. Keep the admin, distributor, and treasury keys separate.
 
-From `contracts/`, run `forge build` and `forge test`. The tests cover roles, funding, the per-payout and global caps, exact period rollover, a repeated recipient, deployed contract rejection, admin changes, pausing, withdrawal, and payout amount fuzzing. The Anvil and configured-chain deployment procedure, including the `.env` loader, is in [`../docs/deployment_runbook.md`](../docs/deployment_runbook.md).
+## Constructor and state
 
-## Security and deployment assumptions
+Deploy with `NativeFaucet(admin, distributor, initialMaxPayout, initialSpendingLimit, periodDurationSeconds)`. The admin and distributor must be different nonzero addresses; the three numeric values must be positive. Amounts are integers in the chain's smallest native unit, commonly wei.
 
-- Hold the admin role in a well-controlled multisignature account. The admin can withdraw the entire balance or raise the payout limits immediately; the delayed transfer protects admin handoff, not a compromised current admin. Keep the distributor signing key separate and fund the faucet with only the amount intended for exposure.
-- The global limit applies to `dispense` within fixed periods. A payout immediately before a period boundary and another immediately after it can use two periods' allowances close together. The custom chain's block timestamps determine the boundary.
-- The recipient code check is a filter for deployed contracts, not proof of EOA ownership. It also excludes code-bearing EOA delegation schemes on chains that support them. Backend signature verification and chain-specific code checks remain necessary before enabling public claims.
-- The 24-hour wallet cooldown and duplicate-claim handling are not yet implemented. This contract alone is not a complete public faucet.
+| State | Meaning |
+| --- | --- |
+| `periodDuration` | Immutable number of seconds in one spending period. |
+| `maxPayout` | Maximum native currency in one `dispense` call; admin can change it. |
+| `spendingLimit` | Maximum total `dispense` value in a fixed period; admin can change it. |
+| `periodStart`, `periodSpent` | Accounting for the current stored period. `spentInCurrentPeriod()` reports zero after the period rolls over until another payout occurs. |
+| pause state and roles | OpenZeppelin `Pausable` and `AccessControlDefaultAdminRules` control payouts and permissions. |
+
+Periods are aligned to Unix time zero: `currentPeriodStart() = block.timestamp - block.timestamp % periodDuration`. With `86400` seconds, periods begin at midnight UTC. Spending does not roll over into the next period. A payout near a boundary can be followed by another payout in the next period.
+
+## Functions and events
+
+| Function | Caller | Contract rule |
+| --- | --- | --- |
+| `dispense(recipient, amount)` | Distributor | Requires unpaused state, nonzero recipient with no deployed code, `0 < amount <= maxPayout`, enough remaining period allowance, and enough contract balance. Updates accounting before the native transfer; a failed transfer reverts everything. |
+| `setMaxPayout(amount)` | Admin | Sets a positive per-payout maximum; emits `MaxPayoutUpdated`. |
+| `setSpendingLimit(amount)` | Admin | Sets a positive period budget; emits `SpendingLimitUpdated`. Lowering it below already-recorded spending blocks further payouts until the next period or a higher limit. |
+| `pause()` / `unpause()` | Admin | Stops or resumes `dispense`. Funding and admin withdrawals still work while paused. |
+| `withdraw(recipient, amount)` | Admin | Moves funds for recovery or migration; requires a nonzero recipient, positive amount, and sufficient balance. It does not consume the period payout budget. |
+| `receive()` | Anyone | Accepts native currency; emits `Funded`. |
+| `currentPeriodStart()` / `spentInCurrentPeriod()` | Anyone, read-only | Reports period accounting. |
+
+Successful payouts emit `Dispensed`; withdrawals emit `Withdrawn`. The contract uses a reentrancy guard on `dispense` and `withdraw`. Public getters expose the limits, period state, and `DISTRIBUTOR_ROLE` constant.
+
+## Contract and backend boundary
+
+The contract enforces authorization and financial limits even if someone calls it directly through a block explorer. Its `recipient.code.length` check excludes deployed contracts but does not prove a wallet is controlled by the requester. The backend verifies a signed SIWE challenge and checks recipient code before reserving a payout. The contract checks code again when paying.
+
+Wallet cooldown and claim history are **off-chain** in PostgreSQL. The contract has no per-recipient cooldown mapping: an authorized distributor can call `dispense` twice for the same recipient if on-chain limits permit it. The backend prevents ordinary users from doing that through its active-claim rule and cooldown. The contract's period spending cap and limited balance bound the funds available to a compromised distributor.
+
+## Build, test, deploy
+
+Foundry compiles Solidity `0.8.24` for the Paris EVM target with 200 optimizer runs. OpenZeppelin Contracts supplies access control, pause, and reentrancy protection. Confirm the target chain supports this EVM revision and its configured gas-fee mode.
+
+From `contracts/`:
+
+```bash
+forge build
+forge test
+```
+
+The tests in [`test/`](test/) cover roles, payout and period caps, exact rollover, recipient-code checks, pause, withdrawal, reentrancy, and payout amount fuzzing. Deployment uses [`script/DeployNativeFaucet.s.sol`](script/DeployNativeFaucet.s.sol), launched through [`scripts/deploy.py`](scripts/deploy.py) with ignored local `.env` settings. [`scripts/export_deployment.py`](scripts/export_deployment.py) exports the ABI and public deployment metadata for the backend. Follow the [deployment runbook](../docs/deployment_runbook.md) for Anvil and other EVM chains.
+
+Logic changes require a new contract: pause the old faucet, deploy the new version, move remaining funds with an admin withdrawal, update backend deployment metadata and chain config, then test before enabling payouts.
