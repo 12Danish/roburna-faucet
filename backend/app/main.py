@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     database: ConnectionPool | None = None
     try:
-        database = create_database_pool(settings.database_url)
+        database = create_database_pool(settings.database_url.get_secret_value())
         chain_clients: dict[int, ChainClient] = {}
         for definition, rpc_url, deployment_path in load_chain_definitions(
             settings.resolved_chains_config(), settings.rpc_urls

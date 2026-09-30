@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -15,14 +15,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = Field(min_length=1)
+    database_url: SecretStr
     chains_config: Path = Path("config/chains.json")
-    rpc_urls: dict[str, str] = Field(default_factory=dict)
+    rpc_urls: dict[str, SecretStr] = Field(default_factory=dict)
 
-    @field_validator("database_url")
+    @field_validator("database_url", mode="before")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
-        if not value.startswith(("postgresql://", "postgres://")):
+        if not isinstance(value, str) or not value.startswith(("postgresql://", "postgres://")):
             raise ValueError("database_url must use postgresql:// or postgres://")
         return value
 
