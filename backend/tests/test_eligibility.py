@@ -4,6 +4,8 @@ import pytest
 
 from app.services.eligibility import FaucetUnavailable, require_faucet_capacity
 
+RECIPIENT = "0xbDd4628028F85bb7C4aECd9d1F426aE9525aF8F4"
+
 
 class _Call:
     def __init__(self, value):
@@ -14,7 +16,7 @@ class _Call:
 
 
 def _chain(recipient_balance: int, *, cap: int | None = 500):
-    balances = {"recipient": recipient_balance, "faucet": 1000}
+    balances = {RECIPIENT: recipient_balance, "faucet": 1000}
     functions = SimpleNamespace(
         paused=lambda: _Call(False),
         maxPayout=lambda: _Call(10),
@@ -32,12 +34,12 @@ def _chain(recipient_balance: int, *, cap: int | None = 500):
 
 
 def test_balance_cap_allows_exact_target_and_rejects_excess() -> None:
-    require_faucet_capacity(_chain(490), "recipient")
+    require_faucet_capacity(_chain(490), RECIPIENT.lower())
     for balance in (491, 500, 501):
         with pytest.raises(FaucetUnavailable) as error:
-            require_faucet_capacity(_chain(balance), "recipient")
+            require_faucet_capacity(_chain(balance), RECIPIENT.lower())
         assert error.value.code == "recipient_balance_limit_exceeded"
 
 
 def test_old_deployment_without_balance_cap_still_works() -> None:
-    require_faucet_capacity(_chain(999, cap=None), "recipient")
+    require_faucet_capacity(_chain(999, cap=None), RECIPIENT.lower())

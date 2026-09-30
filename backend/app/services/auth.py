@@ -1,3 +1,4 @@
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,8 @@ from web3 import Web3
 
 from app.db.models import Challenge, Claim
 from app.services.chains import ChainClient
+
+logger = logging.getLogger(__name__)
 
 
 class ChallengeVerificationError(Exception):
@@ -163,7 +166,8 @@ def verify_wallet_challenge(
         raise ChallengeUnavailable
     try:
         recipient_code = chain_client.web3.eth.get_code(Web3.to_checksum_address(wallet))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Recipient code lookup failed on chain %s: %s", chain_id, type(exc).__name__)
         raise ChainLookupUnavailable from None
     if recipient_code:
         raise ContractRecipient

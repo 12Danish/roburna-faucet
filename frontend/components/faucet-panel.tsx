@@ -28,7 +28,8 @@ function walletError(error: unknown): string {
   if (value?.message === "contract_recipient") return "Only regular wallet addresses can receive faucet funds.";
   if (value?.message === "recipient_balance_limit_exceeded") return "This payout would put your wallet above the faucet balance limit.";
   if (value?.message === "faucet_paused") return "The faucet is paused. Please try again later.";
-  if (value?.message === "chain_unavailable" || value?.status === 502 || value?.status === 503) return "The faucet is temporarily unavailable. Please try again later.";
+  if (value?.message === "chain_unavailable") return "The Roburna chain check failed. Please try again shortly.";
+  if (value?.status === 502 || value?.status === 503) return "The faucet is temporarily unavailable. Please try again later.";
   if (value?.message === "challenge_unavailable") return "The sign-in message expired. Please try again.";
   if (value?.message === "invalid_wallet_signature") return "The wallet signature could not be verified.";
   return value?.message && value.message !== "request_failed" ? value.message : "Something went wrong. Please try again.";
