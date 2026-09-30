@@ -58,6 +58,8 @@ Current rolling request limits are fixed in [`app/services/rate_limits.py`](app/
 
 A limit returns HTTP `429` with `Retry-After`; an active claim returns `409`; cooldown returns `429` with `nextEligibleAt`. A wallet's claim bucket remains the same when its IP changes. IP/network limits and wallet cooldown make abuse harder but do not identify every VPN or stop a person with many wallets. CAPTCHA is deferred; VPN reputation checks and alerting are not implemented. Keep the API private/local until those public-faucet controls are decided and deployed.
 
+For a single-server production setup with an IP-and-port URL, use the [server deployment guide](../docs/server_ip_deployment.md). It adds a private Next.js container and a public Nginx entrypoint while retaining the existing API, worker, and PostgreSQL services.
+
 ## Local setup
 
 From `backend/`, activate your Python environment and install dependencies:

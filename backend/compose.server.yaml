@@ -1,0 +1,47 @@
+# Combine with compose.yaml for a single-server public faucet deployment.
+services:
+  db:
+    networks: [faucet]
+  migrate:
+    networks: [faucet]
+  api:
+    networks: [faucet]
+  worker:
+    networks: [faucet]
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_ROBURNA_RPC_URL: ${NEXT_PUBLIC_ROBURNA_RPC_URL:-https://preseed-testnet-1.roburna.com}
+    restart: unless-stopped
+    environment:
+      FAUCET_API_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      faucet:
+        ipv4_address: ${FAUCET_FRONTEND_IP:-172.30.159.3}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+  gateway:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "${FAUCET_PUBLIC_BIND_IP:-0.0.0.0}:${FAUCET_PUBLIC_PORT:-3000}:80"
+    volumes:
+      - ./nginx/faucet.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks: [faucet]
+
+networks:
+  faucet:
+    ipam:
+      config:
+        - subnet: ${FAUCET_NETWORK_SUBNET:-172.30.159.0/24}

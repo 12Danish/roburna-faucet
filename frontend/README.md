@@ -29,6 +29,6 @@ Open **http://localhost:3000** (use `localhost`, not `127.0.0.1`, for the SIWE o
 
 The browser never receives the distributor key. Claims are signed by the worker, not by the user's wallet. The browser signs only the SIWE ownership message.
 
-## Deployment note
+## Deploy on a server
 
-The Next.js proxy currently connects to FastAPI as one peer. FastAPI's IP/subnet limits therefore apply to that peer unless the deployment has a trusted reverse-proxy forwarding setup. Before exposing this to public traffic, configure the actual proxy chain and `BACKEND_TRUSTED_PROXY_CIDRS` so FastAPI resolves real client IPs; never trust arbitrary browser-supplied `X-Forwarded-For` headers. Wallet limits still apply independently.
+Use the [single-server IP deployment guide](../docs/server_ip_deployment.md). It builds this frontend as a Next.js standalone Docker image behind Nginx, with FastAPI and PostgreSQL private to the Compose network. Nginx overwrites the client-IP header, the Next.js proxy forwards that IP, and FastAPI trusts only the fixed frontend container address for rate limiting. Do not publish the Next.js container directly when using that trust setting.

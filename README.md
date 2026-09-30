@@ -2,7 +2,7 @@
 
 A monorepo for dispensing a small amount of an EVM chain's **native currency**. The wallet signs an off-chain challenge; the backend approves and records the claim; a separate distributor worker pays gas and calls the faucet contract. The recipient does not send a transaction. This is a native-currency faucet, not an ERC-20 token faucet.
 
-The Solidity contract and FastAPI claim flow are implemented. The Next.js frontend is currently a starter page. Local Anvil is the first test chain; each later EVM chain needs its own contract deployment, RPC settings, and backend chain entry. No Roburna testnet deployment is recorded in this repo. A [Roburna testnet deployment and Compose guide](docs/roburna_testnet_deployment.md) is available.
+The Solidity contract, FastAPI claim flow, and Next.js faucet page are implemented. The active Roburna Testnet deployment uses chain ID 159 and faucet `0xb913025fd2067F996CB00B70a5DD0aB81e8FbaD4`. Each additional EVM chain needs its own contract deployment, RPC settings, and backend chain entry. See the [Roburna deployment guide](docs/roburna_testnet_deployment.md) and [single-server IP deployment guide](docs/server_ip_deployment.md).
 
 ## Project layout
 
@@ -10,7 +10,7 @@ The Solidity contract and FastAPI claim flow are implemented. The Next.js fronte
 | --- | --- | --- |
 | [`contracts/`](contracts/README.md) | Foundry project: `NativeFaucet.sol`, Solidity tests, deployment script, and ABI/deployment exporter. | [Contract specification](contracts/README.md) · [original spec sheet](docs/native_faucet_contract_spec.docx) |
 | [`backend/`](backend/README.md) | FastAPI routes, SQLAlchemy models, Alembic migrations, PostgreSQL rate limits, and distributor worker. | [Backend setup and security](backend/README.md) |
-| [`frontend/`](frontend/README.md) | Next.js App Router, TypeScript, and Tailwind starter. | The wallet claim UI is still to be built. |
+| [`frontend/`](frontend/README.md) | Next.js App Router, TypeScript, and Tailwind faucet page. | Wallet signing, claims, status polling, and production container. |
 | [`docs/`](docs/implementation_plan.md) | Implementation plans, original spec, user flow, and deployment instructions. | [Deployment runbook](docs/deployment_runbook.md) · [faucet flow](docs/faucet_flow.png) |
 
 Important source files: [`contracts/src/NativeFaucet.sol`](contracts/src/NativeFaucet.sol) holds and dispenses funds; [`backend/app/main.py`](backend/app/main.py) assembles the API; [`backend/app/api/routes/claims.py`](backend/app/api/routes/claims.py) accepts claims; [`backend/app/services/rate_limits.py`](backend/app/services/rate_limits.py) enforces request limits; [`backend/app/worker.py`](backend/app/worker.py) starts the distributor process. Configuration examples are [`contracts/.env.example`](contracts/.env.example), [`backend/.env.example`](backend/.env.example), and [`backend/config/chains.example.json`](backend/config/chains.example.json).
