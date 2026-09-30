@@ -49,6 +49,39 @@ class Challenge(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class RateLimitEvent(Base):
+    """Short-lived, pseudonymous request records used for sliding-window limits."""
+
+    __tablename__ = "rate_limit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "identity_type IN ('ip', 'subnet', 'wallet')",
+            name="rate_limit_identity_type_valid",
+        ),
+        CheckConstraint("action IN ('challenge', 'claim')", name="rate_limit_action_valid"),
+        CheckConstraint(
+            "identity_hash ~ '^[0-9a-f]{64}$'",
+            name="rate_limit_identity_hash_sha256",
+        ),
+        Index(
+            "rate_limit_events_lookup",
+            "action",
+            "identity_type",
+            "identity_hash",
+            "occurred_at",
+        ),
+        Index("rate_limit_events_expiry", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    identity_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    identity_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
+    )
+
+
 class Claim(Base):
     __tablename__ = "claims"
     __table_args__ = (

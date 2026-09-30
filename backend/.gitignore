@@ -20,3 +20,6 @@ htmlcov/
 
 # Encrypted local signer keystores
 secrets/
+
+# Machine-specific enabled chains and deployment references
+/config/chains.json

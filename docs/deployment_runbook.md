@@ -70,7 +70,7 @@ python3 scripts/deploy.py --broadcast
 
 The first command simulates deployment and must pass before the second command broadcasts. The launcher rejects a chain ID mismatch. For a custom chain, confirm the RPC supports transaction submission, gas estimation, and receipts; check its EVM revision and fee mode before deployment. Use the correct gas mode in `.env`. Do not use unlocked signing on a public RPC.
 
-After broadcasting, copy the faucet address, check that code exists there, read both roles and configuration getters, fund the contract with the treasury signer, and submit one small `dispense` from the distributor signer. Verify the transaction receipts, `Dispensed` event, recipient balance, faucet balance, and `spentInCurrentPeriod`. Do this before enabling the chain in the backend; the backend is not yet implemented.
+After broadcasting, copy the faucet address, check that code exists there, read both roles and configuration getters, fund the contract with the treasury signer, and submit one small `dispense` from the distributor signer. Verify the transaction receipts, `Dispensed` event, recipient balance, faucet balance, and `spentInCurrentPeriod`. Do this before enabling the chain in the backend.
 
 ## 3. Export public metadata
 

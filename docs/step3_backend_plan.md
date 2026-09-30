@@ -58,7 +58,7 @@ The API returns `429` with `nextEligibleAt` for cooldown, `409` for an existing 
 
 - Implement `POST /claims` with server-selected payout amount and the atomic reservation from Phase 3.2. Return `202 Accepted` promptly with a claim ID; `GET /claims/{claim_id}` provides progress and a transaction link later.
 - Check pending claim, 24-hour wallet cooldown, enabled chain, and recipient eligibility. Read `paused`, `maxPayout`, `spendingLimit`, `spentInCurrentPeriod`, and faucet balance for an early user-facing denial. Treat these reads as advisory because chain state can change before broadcast; the contract remains the final payout gate.
-- Add a small PostgreSQL-backed IP request limit and a CAPTCHA verification interface. Trust forwarded client IP headers only from a configured reverse proxy. Permit an explicit local-Anvil setting that bypasses CAPTCHA only while the API is bound to loopback; require CAPTCHA before a public endpoint is enabled. Do not add Redis unless measurements justify it.
+- Apply the PostgreSQL-backed sliding-window limiter to both challenge issuance and claim submission. It tracks client IP and IPv4 `/24` or IPv6 `/64` before signature verification; the claim wallet limit applies after signature verification. Forwarded client IP headers are trusted only from configured reverse proxies. Add a CAPTCHA verification interface later. Do not add Redis unless measurements justify it.
 
 **Gate:** API tests cover success, cooldown with next eligible time, pending conflict, invalid inputs, CAPTCHA/rate denial, and chain outage without issuing a transaction.
 

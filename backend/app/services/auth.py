@@ -3,12 +3,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from pydantic import ValidationError
 from siwe import SiweMessage, VerificationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from web3 import Web3
 
-from app.db.models import Challenge
+from app.db.models import Challenge, Claim
 from app.services.chains import ChainClient
 
 
@@ -166,6 +169,46 @@ def verify_wallet_challenge(
         raise ContractRecipient
 
     return VerifiedChallenge(challenge_id, chain_id, wallet)
+
+
+def existing_claim_for_signed_challenge(
+    sessions: sessionmaker[Session],
+    *,
+    challenge_id: UUID,
+    message_text: str,
+    signature: str,
+    wallet_address: str,
+    chain_id: int,
+) -> UUID | None:
+    """Return an accepted claim on a retry, even after SIWE expiry.
+
+    Only the exact message originally accepted for this challenge and a valid
+    signature by its wallet may retrieve the existing claim through POST /claims.
+    """
+    wallet = _normalize_wallet(wallet_address)
+    with sessions() as session:
+        claim = session.scalar(select(Claim).where(Claim.challenge_id == challenge_id))
+        if claim is None:
+            return None
+        challenge = session.get(Challenge, challenge_id)
+        if (
+            challenge is None
+            or claim.wallet_address != wallet
+            or int(claim.chain_id) != chain_id
+            or challenge.wallet_address != wallet
+            or int(challenge.chain_id) != chain_id
+            or challenge.message != message_text
+            or challenge.consumed_at is None
+        ):
+            raise ChallengeUnavailable
+        existing_id = claim.id
+    try:
+        recovered = Account.recover_message(encode_defunct(text=message_text), signature=signature)
+    except (ValueError, TypeError):
+        raise InvalidWalletSignature from None
+    if recovered.lower() != wallet:
+        raise InvalidWalletSignature
+    return existing_id
 
 
 def _normalize_wallet(address: str) -> str:

@@ -167,13 +167,16 @@ def test_challenge_route_returns_stored_message(monkeypatch) -> None:
         siwe_domain="localhost:3000",
         siwe_uri="http://localhost:3000",
         challenge_ttl_seconds=300,
+        trusted_proxy_cidrs=[],
+        rate_limit_hash_secret=SimpleNamespace(get_secret_value=lambda: "x" * 64),
     )
+    monkeypatch.setattr(auth_route, "enforce_request_rate_limit", lambda *args, **kwargs: None)
     monkeypatch.setattr(auth_route, "get_settings", lambda: settings)
     app = FastAPI()
     app.include_router(auth_router)
     app.dependency_overrides[get_runtime] = lambda: runtime
 
-    response = TestClient(app).post(
+    response = TestClient(app, client=("127.0.0.1", 1234)).post(
         "/auth/challenge",
         json={"wallet_address": account.address, "chain_id": 31337},
     )
@@ -184,12 +187,21 @@ def test_challenge_route_returns_stored_message(monkeypatch) -> None:
     assert body["challenge_id"] == str(next(iter(sessions.rows)))
 
 
-def test_challenge_route_rejects_disabled_chain() -> None:
+def test_challenge_route_rejects_disabled_chain(monkeypatch) -> None:
     app = FastAPI()
     app.include_router(auth_router)
     app.dependency_overrides[get_runtime] = lambda: SimpleNamespace(sessions=MemorySessions(), chains={})
+    settings = SimpleNamespace(
+        siwe_domain="localhost:3000",
+        siwe_uri="http://localhost:3000",
+        challenge_ttl_seconds=300,
+        trusted_proxy_cidrs=[],
+        rate_limit_hash_secret=SimpleNamespace(get_secret_value=lambda: "x" * 64),
+    )
+    monkeypatch.setattr(auth_route, "get_settings", lambda: settings)
+    monkeypatch.setattr(auth_route, "enforce_request_rate_limit", lambda *args, **kwargs: None)
 
-    response = TestClient(app).post(
+    response = TestClient(app, client=("127.0.0.1", 1234)).post(
         "/auth/challenge",
         json={"wallet_address": Account.create().address, "chain_id": 31337},
     )

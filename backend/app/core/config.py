@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     siwe_domain: str = "localhost:3000"
     siwe_uri: str = "http://localhost:3000"
     challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    rate_limit_hash_secret: SecretStr = Field(min_length=32)
+    trusted_proxy_cidrs: list[str] = Field(default_factory=list)
     distributor_keystore_path: Path | None = None
     distributor_keystore_password: SecretStr | None = None
     worker_poll_interval_seconds: int = Field(default=2, ge=1, le=60)
@@ -48,6 +50,13 @@ class Settings(BaseSettings):
             or parsed_uri.netloc != self.siwe_domain
         ):
             raise ValueError("siwe_domain must match the host and port in siwe_uri")
+        try:
+            import ipaddress
+
+            for cidr in self.trusted_proxy_cidrs:
+                ipaddress.ip_network(cidr, strict=False)
+        except ValueError as exc:
+            raise ValueError("trusted_proxy_cidrs must contain valid IP networks") from exc
         if (self.distributor_keystore_path is None) != (self.distributor_keystore_password is None):
             raise ValueError(
                 "distributor_keystore_path and distributor_keystore_password must be configured together"

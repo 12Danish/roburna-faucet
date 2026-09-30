@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import ACTIVE_CLAIM_STATES, Challenge, Claim
+from app.db.models import ACTIVE_CLAIM_STATES, Challenge, Claim, TransactionAttempt
 
 
 class ReservationRejected(Exception):
@@ -33,6 +33,44 @@ class ClaimReservation:
     claim_id: UUID
     status: str
     reserved_at: datetime
+
+
+@dataclass(frozen=True)
+class ClaimSnapshot:
+    claim_id: UUID
+    chain_id: int
+    status: str
+    amount_wei: int
+    reserved_at: datetime
+    submitted_at: datetime | None
+    confirmed_at: datetime | None
+    failure_code: str | None
+    transaction_hash: str | None
+
+
+def get_claim_snapshot(sessions: sessionmaker[Session], claim_id: UUID) -> ClaimSnapshot | None:
+    """Read a claim and its latest signed attempt for API polling."""
+    with sessions() as session:
+        claim = session.get(Claim, claim_id)
+        if claim is None:
+            return None
+        attempt_hash = session.scalar(
+            select(TransactionAttempt.transaction_hash)
+            .where(TransactionAttempt.claim_id == claim_id)
+            .order_by(TransactionAttempt.attempt_number.desc())
+            .limit(1)
+        )
+        return ClaimSnapshot(
+            claim_id=claim.id,
+            chain_id=int(claim.chain_id),
+            status=claim.status,
+            amount_wei=int(claim.amount_wei),
+            reserved_at=claim.reserved_at,
+            submitted_at=claim.submitted_at,
+            confirmed_at=claim.confirmed_at,
+            failure_code=claim.failure_code,
+            transaction_hash=attempt_hash,
+        )
 
 
 def reserve_claim(
