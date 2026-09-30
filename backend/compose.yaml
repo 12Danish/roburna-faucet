@@ -61,14 +61,22 @@ services:
     user: "${BACKEND_UID:-1000}:${BACKEND_GID:-1000}"
     command: ["python", "-m", "app.worker"]
     restart: unless-stopped
+    # Read the worker-only password file from outside the repository.
+    env_file:
+      - path: ${BACKEND_WORKER_ENV_FILE:-/etc/roburna-faucet/worker.env}
+        format: raw
     environment:
       <<: *app-environment
       BACKEND_DISTRIBUTOR_KEYSTORE_PATH: secrets/distributor.json
-      BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD: ${BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD:?set BACKEND_DISTRIBUTOR_KEYSTORE_PASSWORD}
     volumes:
       - ./config/chains.json:/app/config/chains.json:ro
       - ../contracts/deployments:/contracts/deployments:ro
-      - ./secrets/distributor.json:/app/secrets/distributor.json:ro
+      - type: bind
+        source: ./secrets/distributor.json
+        target: /app/secrets/distributor.json
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -7,7 +7,7 @@
       "deployment_file": "../../contracts/deployments/159.json",
       "currency_symbol": "RBAT",
       "currency_decimals": 18,
-      "payout_amount_wei": "100000000000000000",
+      "payout_amount_wei": "10000000000000000000",
       "cooldown_seconds": 86400,
       "confirmation_depth": 1,
       "fee_mode": "legacy",

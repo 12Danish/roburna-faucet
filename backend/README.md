@@ -17,7 +17,7 @@ This FastAPI service coordinates native-currency claims on configured EVM chains
 | [`app/services/transactions.py`](app/services/transactions.py), [`app/worker.py`](app/worker.py) | Distributor nonce coordination, signing, broadcast, receipt reconciliation, and worker process. |
 | [`app/db/models.py`](app/db/models.py), [`migrations/versions/`](migrations/versions/) | SQLAlchemy table definitions and versioned Alembic migrations. |
 | [`config/chains.example.json`](config/chains.example.json), [`.env.example`](.env.example) | Templates for local or per-chain settings. The live `config/chains.json` and `.env` are ignored by Git. |
-| [`scripts/create_keystore.py`](scripts/create_keystore.py), [`tests/`](tests/) | Encrypted distributor keystore creation and backend tests. |
+| [`scripts/create_keystore.py`](scripts/create_keystore.py), [`scripts/smoke_claim.py`](scripts/smoke_claim.py), [`tests/`](tests/) | Encrypted distributor keystore creation, optional Roburna claim smoke check, and backend tests. |
 
 PostgreSQL stores `challenges`, `claims`, `transaction_attempts`, and short-lived `rate_limit_events`. It remains the authority for claim state; there is no Redis dependency.
 
@@ -107,7 +107,7 @@ python -m app.worker
 
 ## Roburna testnet with Docker Compose
 
-Use the [Roburna testnet deployment and Compose guide](../docs/roburna_testnet_deployment.md). [`compose.yaml`](compose.yaml) starts PostgreSQL, runs Alembic migrations once, then starts the API and a separate worker. [`compose.env.example`](compose.env.example) and [`config/chains.roburna.example.json`](config/chains.roburna.example.json) are templates. The worker alone receives the encrypted distributor keystore and its password. Compose keeps PostgreSQL on its private network and binds the API to the host loopback interface; put an HTTPS reverse proxy in front before public access.
+Use the [Roburna testnet deployment and Compose guide](../docs/roburna_testnet_deployment.md). [`compose.yaml`](compose.yaml) starts PostgreSQL, runs Alembic migrations once, then starts the API and a separate worker. [`compose.env.example`](compose.env.example) and [`config/chains.roburna.example.json`](config/chains.roburna.example.json) are templates. The worker alone receives the encrypted distributor keystore and its password from a separate root-owned `worker.env` outside the repository; `compose.env` contains only its path. Compose keeps PostgreSQL on its private network and binds the API to the host loopback interface; put an HTTPS reverse proxy in front before public access.
 
 ## Tests
 
